@@ -18,6 +18,13 @@ InformationMatrixCalculator::InformationMatrixCalculator(ros::NodeHandle& nh) {
   min_stddev_q = nh.param<double>("min_stddev_q", 0.05);
   max_stddev_q = nh.param<double>("max_stddev_q", 0.2);
   fitness_score_thresh = nh.param<double>("fitness_score_thresh", 0.5);
+
+  b_var_gain_a = nh.param<double>("b_var_gain_a", 20.0);
+  b_min_stddev_x = nh.param<double>("b_min_stddev_x", 0.1);
+  b_max_stddev_x = nh.param<double>("b_max_stddev_x", 5.0);
+  b_min_stddev_q = nh.param<double>("b_min_stddev_q", 0.05);
+  b_max_stddev_q = nh.param<double>("b_max_stddev_q", 0.2);
+  b_fitness_score_thresh = nh.param<double>("b_fitness_score_thresh", 0.5);
 }
 
 InformationMatrixCalculator::~InformationMatrixCalculator() {}
@@ -77,6 +84,38 @@ double InformationMatrixCalculator::calc_fitness_score(const pcl::PointCloud<Poi
     return (fitness_score / nr);
   else
     return (std::numeric_limits<double>::max());
+}
+
+Eigen::MatrixXd InformationMatrixCalculator::calc_information_matrix_buildings(const pcl::PointCloud<PointT>::ConstPtr& cloud1, const pcl::PointCloud<PointT>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose) const {
+  //double fitness_score = calc_fitness_score(cloud1, cloud2, relpose);
+  //std::cout << "ft: " << fitness_score << std::endl;
+  double fitness_score = calc_fitness_score(cloud1, cloud2, relpose, 2.0);
+  std::cout << "ft_t: " << fitness_score << std::endl;
+  std::cout << "min x: " << b_min_stddev_x << std::endl;
+  std::cout << "max x: " << b_max_stddev_x << std::endl;
+  std::cout << "min q: " << b_min_stddev_q << std::endl;
+  std::cout << "max q: " << b_max_stddev_q << std::endl;
+
+  double min_var_x = std::pow(b_min_stddev_x, 2);
+  //std::cout << "min_var_x: " << min_var_x << std::endl;
+  double max_var_x = std::pow(b_max_stddev_x, 2);
+  //std::cout << "max_var_x: " << max_var_x << std::endl;
+  double min_var_q = std::pow(b_min_stddev_q, 2);
+  //std::cout << "min_var_q: " << min_var_q << std::endl;
+  double max_var_q = std::pow(b_max_stddev_q, 2);
+  //std::cout << "max_var_q: " << max_var_q << std::endl;
+
+  float w_x = weight(b_var_gain_a, b_fitness_score_thresh, min_var_x, max_var_x, fitness_score);
+  //std::cout << "w_x: " << w_x << std::endl;
+  float w_q = weight(b_var_gain_a, b_fitness_score_thresh, min_var_q, max_var_q, fitness_score);
+  //std::cout << "w_q: " << w_q << std::endl;
+  std::cout << "var gain: " << b_var_gain_a << std::endl;
+  std::cout << "score thresh: " << b_fitness_score_thresh << std::endl;
+
+  Eigen::MatrixXd inf = Eigen::MatrixXd::Identity(6, 6);
+  inf.topLeftCorner(3, 3).array() /= w_x;
+  inf.bottomRightCorner(3, 3).array() /= w_q;
+  return inf;
 }
 
 }  // namespace hdl_graph_slam

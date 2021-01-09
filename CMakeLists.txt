@@ -22,6 +22,7 @@ find_package(catkin REQUIRED COMPONENTS
   interactive_markers
   ndt_omp
   fast_gicp
+  tf_conversions
 )
 catkin_python_setup()
 
@@ -50,6 +51,8 @@ message(STATUS "VGICP_CUDA_FOUND:" ${VGICP_CUDA_FOUND})
 if(VGICP_CUDA_FOUND)
   add_definitions(-DUSE_VGICP_CUDA)
 endif()
+
+find_package(OpenSSL)
 
 ########################
 ## message generation ##
@@ -119,6 +122,10 @@ add_library(hdl_graph_slam_nodelet
   src/hdl_graph_slam/registrations.cpp
   src/hdl_graph_slam/information_matrix_calculator.cpp
   src/g2o/robust_kernel_io.cpp
+  src/hdl_graph_slam/building.cpp
+  src/hdl_graph_slam/building_tools.cpp 
+  src/hdl_graph_slam/building_node.cpp
+  src/hdl_graph_slam/matrix.cpp
 )
 target_link_libraries(hdl_graph_slam_nodelet
   ${catkin_LIBRARIES}
@@ -131,6 +138,9 @@ target_link_libraries(hdl_graph_slam_nodelet
   ${G2O_SOLVER_CHOLMOD}   # be aware of that cholmod is released under GPL
   ${G2O_TYPES_SLAM3D}
   ${G2O_TYPES_SLAM3D_ADDONS}
+  OpenSSL::SSL 
+  OpenSSL::Crypto 
+  curlpp
 )
 add_dependencies(hdl_graph_slam_nodelet ${PROJECT_NAME}_gencpp)
 

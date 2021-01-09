@@ -59,6 +59,20 @@
 #include <g2o/edge_se3_priorvec.hpp>
 #include <g2o/edge_se3_priorquat.hpp>
 
+#include "hdl_graph_slam/building_tools.hpp"
+#include "hdl_graph_slam/building_node.hpp"
+#include "hdl_graph_slam/matrix.h"
+#include <pclomp/gicp_omp.h>
+#include <pcl/filters/radius_outlier_removal.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/voxel_grid.h>
+#include <fast_gicp/gicp/fast_gicp.hpp>
+#include <fast_gicp/gicp/fast_vgicp.hpp>
+#include <pcl/ModelCoefficients.h>
+#include <pcl/filters/project_inliers.h>
+#include <pcl/registration/transformation_estimation_lm.h>
+#include <pcl/registration/warp_point_rigid_3d.h>
+
 namespace hdl_graph_slam {
 
 class HdlGraphSlamNodelet : public nodelet::Nodelet {
@@ -81,6 +95,23 @@ public:
     trans_odom2map.setIdentity();
 
     max_keyframes_per_update = private_nh.param<int>("max_keyframes_per_update", 10);
+
+    // buildings parameters
+    buildings_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/buildings_cloud", 1);
+    odom_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/odom_cloud", 32);
+    transformed_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/transformed_cloud", 32);
+    original_odom_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/original_odom_cloud", 32);
+
+    lidar_range = private_nh.param<float>("lidar_range", 300);
+    ground_floor_max_thresh = private_nh.param<double>("ground_floor_max_thresh", 0.5);
+    radius_search = private_nh.param<double>("radius_search", 1);
+    min_neighbors_in_radius = private_nh.param<double>("min_neighbors_in_radius", 100);
+    enter = 1;
+    ii = -1;
+    //read ground truth
+    gt = loadPoses("/home/veronica/Desktop/Thesis/07.txt");
+    std::cout << "gt poses loaded: " << gt.size() << std::endl;
+    gt_markers_pub = mt_nh.advertise<visualization_msgs::Marker>("/hdl_graph_slam/gt_markers", 16);
 
     //
     anchor_node = nullptr;
@@ -143,6 +174,7 @@ private:
    * @param cloud_msg
    */
   void cloud_callback(const nav_msgs::OdometryConstPtr& odom_msg, const sensor_msgs::PointCloud2::ConstPtr& cloud_msg) {
+    ii++;
     const ros::Time& stamp = cloud_msg->header.stamp;
     Eigen::Isometry3d odom = odom2isometry(odom_msg);
 
@@ -167,7 +199,7 @@ private:
     }
 
     double accum_d = keyframe_updater->get_accum_distance();
-    KeyFrame::Ptr keyframe(new KeyFrame(stamp, odom, accum_d, cloud));
+    KeyFrame::Ptr keyframe(new KeyFrame(stamp, odom, accum_d, cloud, ii));
 
     std::lock_guard<std::mutex> lock(keyframe_queue_mutex);
     keyframe_queue.push_back(keyframe);
@@ -326,10 +358,14 @@ private:
       // the first gps data position will be the origin of the map
       if(!zero_utm) {
         zero_utm = xyz;
+        zero_utm_zone = utm.zone;
+        zero_utm_band = utm.band;
       }
       xyz -= (*zero_utm);
 
       keyframe->utm_coord = xyz;
+      keyframe->utm_zone = utm.zone;
+      keyframe->utm_band = utm.band;
 
       g2o::OptimizableGraph::Edge* edge;
       if(std::isnan(xyz.z())) {
@@ -504,6 +540,290 @@ private:
     return updated;
   }
 
+  bool update_buildings_nodes() {
+    bool b_updated = false;
+    for(auto& keyframe : keyframes) {
+      // if the keyframe is never been aligned with map and there is a gps, then enter
+      if((keyframe->buildings_nodes).empty() && keyframe->utm_coord && enter) { 
+        
+        std::cout << "update_buildings_nodes - get new buildings" << std::endl;
+        //enter = 0;
+
+        geodesy::UTMPoint utm;
+        Eigen::Vector3d e_utm_coord = keyframe->utm_coord.get();
+        Eigen::Vector3d e_zero_utm = zero_utm.get();
+        // e_utm_coord are the coords of current keyframe wrt zero_utm, so to get real coords we add zero_utm
+        utm.easting = e_utm_coord(0) + e_zero_utm(0);
+        utm.northing = e_utm_coord(1) + e_zero_utm(1);
+        utm.altitude = e_utm_coord(2) + e_zero_utm(2);
+        utm.zone = keyframe->utm_zone.get();
+        utm.band = keyframe->utm_band.get();
+        geographic_msgs::GeoPoint lla = geodesy::toMsg(utm); // convert from utm to lla
+
+        // download and parse buildings
+        std::vector<Building> new_buildings = BuildingTools::getBuildings(lla.latitude, lla.longitude, lidar_range, e_zero_utm);
+        if(new_buildings.size() > 0) {
+          std::cout << "We found buildings!" << std::endl;
+          b_updated = true;
+          e_zero_utm(2) = 0;
+          e_utm_coord(2) = 0;
+
+          std::vector<BuildingNode::Ptr> bnodes; // vector containing all buildings nodes (new and not new)
+          // buildingsCloud is the cloud containing all buildings
+          pcl::PointCloud<pcl::PointXYZ>::Ptr buildingsCloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+          // construct building nodes
+          for(auto it2 = new_buildings.begin(); it2 != new_buildings.end(); it2++)
+          {
+            Building btemp = *it2;
+            *buildingsCloud += *(btemp.geometry);
+            BuildingNode::Ptr bntemp(new BuildingNode());
+            bntemp = get_building_node(btemp);
+            if(bntemp == nullptr) { // enter if the building is new
+              BuildingNode::Ptr bt(new BuildingNode());
+              bt->building = btemp;
+              bt->setReferenceSystem();
+              // retrieve informations to build the se3 node
+              // translation
+              Eigen::Vector3d T = bt->local_origin; // local origin is already referring to zero_utm
+              // rotation
+              Eigen::Matrix3d R = Eigen::Matrix3d::Identity(); // gps coords don't give orientation
+              // rototranslation
+              Eigen::Isometry3d A;
+              A.linear() = R;
+              A.translation() = T;
+              // set global_origin
+              bt->global_origin = A;
+              // set the node
+              bt->node = graph_slam->add_se3_node(A); 
+
+              buildings.push_back(bt);
+              bnodes.push_back(bt);
+            } else {
+              bnodes.push_back(bntemp);
+            }
+          }
+          
+          // pre-processing on odom cloud
+          pcl::PointCloud<pcl::PointXYZ>::Ptr odomCloud(new pcl::PointCloud<pcl::PointXYZ>); // cloud containing lidar data
+          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_2(new pcl::PointCloud<pcl::PointXYZ>);
+          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_3(new pcl::PointCloud<pcl::PointXYZ>);
+          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_4(new pcl::PointCloud<pcl::PointXYZ>);
+          pcl::copyPointCloud(*keyframe->cloud,*temp_cloud); // convert from pointxyzi to pointxyz
+
+          //std::cout << "size 1: " << temp_cloud->size() << std::endl; 
+          // height filtering
+          pcl::PassThrough<pcl::PointXYZ> pass;
+          pass.setInputCloud (temp_cloud);
+          pass.setFilterFieldName ("z");
+          pass.setFilterLimits (ground_floor_max_thresh, 100.0);
+          pass.filter(*temp_cloud_2);
+          temp_cloud_2->header = (*keyframe->cloud).header;
+          //std::cout << "size 2: " << temp_cloud_2->size() << std::endl;
+          // downsampling + outlier removal
+          pcl::Filter<pcl::PointXYZ>::Ptr downsample_filter;
+          double downsample_resolution = private_nh.param<double>("downsample_resolution", 0.1);
+          boost::shared_ptr<pcl::VoxelGrid<pcl::PointXYZ>> voxelgrid(new pcl::VoxelGrid<pcl::PointXYZ>());
+          voxelgrid->setLeafSize(downsample_resolution, downsample_resolution, downsample_resolution);
+          downsample_filter = voxelgrid;
+          downsample_filter->setInputCloud(temp_cloud_2);
+          downsample_filter->filter(*temp_cloud_3);
+          temp_cloud_3->header = temp_cloud_2->header;
+
+          //std::cout << "size 3: " << temp_cloud_3->size() << std::endl;
+
+          pcl::RadiusOutlierRemoval<pcl::PointXYZ>::Ptr rad(new pcl::RadiusOutlierRemoval<pcl::PointXYZ>());
+          rad->setRadiusSearch(radius_search);
+          rad->setMinNeighborsInRadius(min_neighbors_in_radius);
+          //std::cout << "rad: " << rad->getRadiusSearch() << " neighbors: " << rad->getMinNeighborsInRadius() << std::endl; 
+          pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>());
+          rad->setInputCloud(temp_cloud_3);
+          rad->filter(*odomCloud);
+          odomCloud->header = temp_cloud_3->header;
+
+          // project the cloud on plane z=0
+          /*pcl::ProjectInliers<pcl::PointXYZ> proj;
+          pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+          coefficients->values.resize(4);
+          coefficients->values[0]=0;
+          coefficients->values[1]=0;
+          coefficients->values[2]=1;
+          coefficients->values[3]=0; 
+          proj.setModelType(pcl::SACMODEL_PLANE);
+          proj.setInputCloud (temp_cloud_4);
+          proj.setModelCoefficients (coefficients);
+          proj.filter (*odomCloud);
+          std::cerr << "PointCloud before projection:" << temp_cloud_4->size() << ", after projection has: " << odomCloud->size () << " data points." << std::endl;
+          odomCloud->header = temp_cloud_4->header;*/
+
+           // publish original odom cloud
+          sensor_msgs::PointCloud2Ptr oc_cloud_msg(new sensor_msgs::PointCloud2());
+          pcl::toROSMsg(*keyframe->cloud, *oc_cloud_msg);
+          oc_cloud_msg->header.frame_id = "base_link";
+          oc_cloud_msg->header.stamp = keyframe->stamp;
+          original_odom_pub.publish(oc_cloud_msg);
+          // publish odom cloud
+          sensor_msgs::PointCloud2Ptr o_cloud_msg(new sensor_msgs::PointCloud2());
+          pcl::toROSMsg(*odomCloud, *o_cloud_msg);
+          o_cloud_msg->header.frame_id = "base_link";
+          o_cloud_msg->header.stamp = keyframe->stamp;
+          odom_pub.publish(o_cloud_msg);
+          // publish buildings cloud
+          sensor_msgs::PointCloud2Ptr b_cloud_msg(new sensor_msgs::PointCloud2());
+          pcl::toROSMsg(*buildingsCloud, *b_cloud_msg);
+          b_cloud_msg->header.frame_id = map_frame_id;
+          b_cloud_msg->header.stamp = keyframe->stamp;
+          buildings_pub.publish(b_cloud_msg);
+          // compute initial guess
+          Eigen::Quaterniond orientation = *(keyframe->orientation);
+          orientation.normalize();
+          Eigen::Matrix3f R = (orientation.cast<float>()).toRotationMatrix();
+          Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
+          guess.block<3,1>(0,3) = e_utm_coord.cast<float>();
+          guess.block<3,3>(0,0) = R;
+          std::cout << "guess: " << guess << std::endl;
+
+          // gicp_omp registration
+          pcl::Registration<pcl::PointXYZ, pcl::PointXYZ>::Ptr registration;
+
+          pcl::registration::WarpPointRigid3D<pcl::PointXYZ, pcl::PointXYZ>::Ptr warp_fcn(new pcl::registration::WarpPointRigid3D<pcl::PointXYZ,pcl::PointXYZ>);
+          // Create a TransformationEstimationLM object, and set the warp to it
+          pcl::registration::TransformationEstimationLM<pcl::PointXYZ, pcl::PointXYZ>::Ptr te(new pcl::registration::TransformationEstimationLM<pcl::PointXYZ, pcl::PointXYZ>);
+          te->setWarpFunction(warp_fcn);
+          //std::cout << "registration: FAST_VGICP" << std::endl;
+          //boost::shared_ptr<fast_gicp::FastVGICP<pcl::PointXYZ, pcl::PointXYZ>> gicp(new fast_gicp::FastVGICP<pcl::PointXYZ, pcl::PointXYZ>());
+          //gicp->setNumThreads(private_nh.param<int>("reg_num_threads", 0));
+          //gicp->setResolution(private_nh.param<double>("reg_resolution", 1.0));
+          std::cout << "registration: GICP_OMP" << std::endl;
+          boost::shared_ptr<pclomp::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ>> gicp(new pclomp::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ>());
+          if(private_nh.param<bool>("enable_transformation_epsilon", true))
+            gicp->setTransformationEpsilon(private_nh.param<double>("transformation_epsilon", 0.01));
+          if(private_nh.param<bool>("enable_maximum_iterations", true))
+            gicp->setMaximumIterations(private_nh.param<int>("maximum_iterations", 64));
+          if(private_nh.param<bool>("enable_use_reciprocal_correspondences", true))
+            gicp->setUseReciprocalCorrespondences(private_nh.param<bool>("use_reciprocal_correspondences", false));
+          if(private_nh.param<bool>("enable_gicp_correspondence_randomness", true))
+            gicp->setCorrespondenceRandomness(private_nh.param<int>("gicp_correspondence_randomness", 20));
+          if(private_nh.param<bool>("enable_gicp_max_optimizer_iterations", true))
+            gicp->setMaximumOptimizerIterations(private_nh.param<int>("gicp_max_optimizer_iterations", 20));
+
+          if(private_nh.param<bool>("enable_gicp_max_correspondance_distance", false))
+            gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance", 0.05));
+          if(private_nh.param<bool>("enable_gicp_euclidean_fitness_epsilon", false))
+            gicp->setEuclideanFitnessEpsilon(private_nh.param<double>("gicp_euclidean_fitness_epsilon", 1));
+          if(private_nh.param<bool>("enable_gicp_ransac_outlier_threshold", false)) 
+            gicp->setRANSACOutlierRejectionThreshold(private_nh.param<double>("gicp_ransac_outlier_threshold", 1.5));
+
+          //std::cout << "max dist: " << gicp->getMaxCorrespondenceDistance() << std::endl;
+          //std::cout << "ransac: " << gicp->getRANSACOutlierRejectionThreshold() << std::endl;
+          //std::cout << "fitness: " << gicp->getEuclideanFitnessEpsilon() << std::endl;
+
+          registration = gicp;
+          //registration->setTransformationEstimation(te);
+          registration->setInputTarget(buildingsCloud);
+          registration->setInputSource(odomCloud);
+          pcl::PointCloud<pcl::PointXYZ>::Ptr aligned(new pcl::PointCloud<pcl::PointXYZ>());
+          registration->align(*aligned, guess);
+          std::cout << "has converged:" << registration->hasConverged() << " score: " << registration->getFitnessScore() << std::endl;
+          Eigen::Matrix4f transformation = registration->getFinalTransformation();
+          std::cout<< "Transformation: " << transformation << std::endl;
+
+          // publish icp resulting transform
+          sensor_msgs::PointCloud2Ptr t_cloud_msg(new sensor_msgs::PointCloud2());
+          pcl::toROSMsg(*aligned, *t_cloud_msg);
+          t_cloud_msg->header.frame_id = map_frame_id;
+          t_cloud_msg->header.stamp = keyframe->stamp;
+          transformed_pub.publish(t_cloud_msg);
+
+          Eigen::Matrix4d t_s_bs = transformation.cast<double>();
+          
+          Eigen::Isometry3d t_s_bs_iso = Eigen::Isometry3d::Identity();
+          t_s_bs_iso.translation() = t_s_bs.block<3, 1>(0, 3);
+          t_s_bs_iso.linear() = t_s_bs.block<3, 3>(0, 0);
+          
+          //Eigen::MatrixXd information_matrix = Eigen::MatrixXd::Identity(6, 6);
+          //information_matrix.topLeftCorner(2, 2).array() /= private_nh.param<float>("building_edge_stddev_xy", 0.25);
+          //information_matrix(2, 2) /= private_nh.param<float>("building_edge_stddev_z", 0.25);
+          //information_matrix.bottomRightCorner(3, 3).array() /= private_nh.param<float>("building_edge_stddev_q", 1);
+          
+          // pc XYZI needed to compute the information matrix 
+          pcl::PointCloud<PointT>::Ptr btempcloud(new pcl::PointCloud<PointT>);
+          pcl::copyPointCloud(*buildingsCloud,*btempcloud); // convert pcl buildings pxyz to pxyzi
+          pcl::PointCloud<PointT>::Ptr otempcloud(new pcl::PointCloud<PointT>);
+          pcl::copyPointCloud(*odomCloud,*otempcloud); // convert pcl odom pxyz to pxyzi
+          Eigen::MatrixXd information_matrix = inf_calclator->calc_information_matrix_buildings(btempcloud, otempcloud, t_s_bs_iso);
+          std::cout << "information matrix: " << information_matrix << std::endl;
+
+          /*Eigen::Matrix3d rot = t_s_bs.block<3, 3>(0, 0);
+          //std::cout << "rot: " << rot << std::endl;
+          Eigen::Quaterniond quat(rot); 
+          Eigen::MatrixXd im = information_matrix.block<3, 3>(3, 3);
+          //std::cout << "im: " << im << std::endl;
+          //std::cout << "quat: " << quat.x() << " " << quat.y() << " " << quat.z() << " " << quat.w() << std::endl;
+          auto edge = graph_slam->add_se3_prior_quat_edge(keyframe->node, quat, im);
+          graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
+
+          Eigen::MatrixXd im2 = information_matrix.block<3, 3>(0, 0);
+          //std::cout << "im: " << im2 << std::endl;
+          Eigen::Vector3d trans = t_s_bs.block<3, 1>(0, 3);
+          //std::cout << "trans: " << trans << std::endl;
+          auto edge2 = graph_slam->add_se3_prior_xyz_edge(keyframe->node, trans, im2);
+          graph_slam->add_robust_kernel(edge2, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
+          */
+          // add edges
+          for(auto it1 = bnodes.begin(); it1 != bnodes.end(); it1++)
+          {
+            BuildingNode::Ptr bntemp = *it1;
+            Eigen::Matrix4d t_bs_b = Eigen::Matrix4d::Identity();
+            t_bs_b.block<3, 1>(0, 3) = bntemp->local_origin;
+            Eigen::Matrix4d t_s_b = t_bs_b * t_s_bs;
+            Eigen::Isometry3d t_s_b_iso = Eigen::Isometry3d::Identity();
+            t_s_b_iso.translation() = t_s_b.block<3, 1>(0, 3);
+            t_s_b_iso.linear() = t_s_b.block<3, 3>(0, 0);
+            
+            auto edge = graph_slam->add_se3_edge(bntemp->node, keyframe->node, t_s_b_iso, information_matrix);
+            graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
+          }
+          keyframe->buildings_nodes = bnodes;
+        } else {
+          std::cout << "No buildings found!" << std::endl;
+          b_updated = false;
+        }
+      } 
+    }
+    return b_updated;
+  }
+
+  BuildingNode::Ptr get_building_node(Building b) {
+    for(auto it = buildings.begin(); it != buildings.end(); it++)
+    {
+      BuildingNode::Ptr bntemp = *it;
+      Building btemp = bntemp->building;
+      if(btemp.id.compare(b.id) == 0)
+        return bntemp;
+    }
+    return nullptr;
+  }
+
+  std::vector<Matrix> loadPoses(std::string file_name) {
+    std::vector<Matrix> poses;
+    FILE *fp = fopen(file_name.c_str(),"r");
+    if (!fp)
+      return poses;
+    while (!feof(fp)) {
+      Matrix P = Matrix::eye(4);
+      if (fscanf(fp, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+                     &P.val[0][0], &P.val[0][1], &P.val[0][2], &P.val[0][3],
+                     &P.val[1][0], &P.val[1][1], &P.val[1][2], &P.val[1][3],
+                     &P.val[2][0], &P.val[2][1], &P.val[2][2], &P.val[2][3] )==12) {
+        poses.push_back(P);
+      }
+    }
+    fclose(fp);
+    return poses;
+  }
+
   /**
    * @brief generate map point cloud and publish it
    * @param event
@@ -552,7 +872,7 @@ private:
       read_until_pub.publish(read_until);
     }
 
-    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue()) {
+    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue() & !update_buildings_nodes()) {
       return;
     }
 
@@ -603,6 +923,188 @@ private:
       auto markers = create_marker_array(ros::Time::now());
       markers_pub.publish(markers);
     }
+
+    Matrix pose_align = Matrix::eye(4);
+    tf::StampedTransform transform_t;
+    tf_listener.waitForTransform("map", "camera_gray_left", ros::Time(0), ros::Duration(2.0));
+    tf_listener.lookupTransform("map", "camera_gray_left", ros::Time(0), transform_t);
+    Eigen::Quaterniond q;
+    tf::quaternionTFToEigen(transform_t.getRotation(), q);
+    Eigen::Vector3d v;
+    tf::vectorTFToEigen (transform_t.getOrigin(), v);
+    Eigen::Matrix3d rot = q.normalized().toRotationMatrix();
+    std::cout << "tf trans: " << v << std::endl;
+    std::cout << "tf rot: " << rot << std::endl;
+    std::cout << "last kf tr: " << keyframes.back()->node->estimate().translation() << std::endl;
+    std::cout << "last kf rot: " << keyframes.back()->node->estimate().linear() << std::endl;
+    
+    /*pose_align.val[0][0] = rot(0,0);
+    pose_align.val[0][1] = rot(0,1);
+    pose_align.val[0][2] = rot(0,2);
+    pose_align.val[0][3] = v(0);
+    pose_align.val[1][0] = rot(1,0);
+    pose_align.val[1][1] = rot(1,1);
+    pose_align.val[1][2] = rot(1,2);
+    pose_align.val[1][3] = v(1);
+    pose_align.val[2][0] = rot(2,0);
+    pose_align.val[2][1] = rot(2,1);
+    pose_align.val[2][2] = rot(2,2);
+    pose_align.val[2][3] = v(2);
+    */
+
+    // compute initial guess
+    Eigen::Quaterniond orientation = *(keyframes[0]->orientation);
+    Eigen::Vector3d pos = keyframes[0]->utm_coord.get();
+    orientation.normalize();
+    Eigen::Matrix3d R = orientation.toRotationMatrix();
+    /*Eigen::Isometry3d initial_pose_iso;
+    initial_pose_iso.translation() = pos;
+    initial_pose_iso.linear() = R;*/
+
+    
+    Matrix initial_pose = Matrix::eye(4);
+    Eigen::Isometry3d initial_pose_iso = keyframes[0]->node->estimate();        
+    
+    initial_pose.val[0][0] = initial_pose_iso.linear()(0,0); 
+    initial_pose.val[0][1] = initial_pose_iso.linear()(0,1);
+    initial_pose.val[0][2] = initial_pose_iso.linear()(0,2);
+    initial_pose.val[0][3] = initial_pose_iso.translation()(0);
+    initial_pose.val[1][0] = initial_pose_iso.linear()(1,0);
+    initial_pose.val[1][1] = initial_pose_iso.linear()(1,1);
+    initial_pose.val[1][2] = initial_pose_iso.linear()(1,2);
+    initial_pose.val[1][3] = initial_pose_iso.translation()(1); 
+    initial_pose.val[2][0] = initial_pose_iso.linear()(2,0); 
+    initial_pose.val[2][1] = initial_pose_iso.linear()(2,1); 
+    initial_pose.val[2][2] = initial_pose_iso.linear()(2,2); 
+    initial_pose.val[2][3] = initial_pose_iso.translation()(2);
+    std::cout << "initial pose: " << initial_pose << std::endl;
+
+    pose_align.val[0][0] = 0;
+    pose_align.val[0][1] = 0;
+    pose_align.val[0][2] = 1;
+    pose_align.val[0][3] = 0;
+    pose_align.val[1][0] = -1;
+    pose_align.val[1][1] = 0;
+    pose_align.val[1][2] = 0;
+    pose_align.val[1][3] = 0;
+    pose_align.val[2][0] = 0;
+    pose_align.val[2][1] = -1;
+    pose_align.val[2][2] = 0;
+    pose_align.val[2][3] = 0;
+     
+    std::cout << "pose align: " << pose_align << std::endl;
+     
+    Matrix delta = Matrix::eye(4);
+    delta = initial_pose*pose_align*(Matrix::inv(gt[0]));
+    
+    visualization_msgs::Marker gt_traj_marker;
+    gt_traj_marker.header.frame_id = "map";
+    gt_traj_marker.header.stamp = ros::Time::now();
+    gt_traj_marker.ns = "gt";
+    gt_traj_marker.id = 0;
+    gt_traj_marker.type = visualization_msgs::Marker::SPHERE_LIST;
+    gt_traj_marker.action = visualization_msgs::Marker::ADD;
+
+    gt_traj_marker.pose.orientation.w = 1.0;
+    gt_traj_marker.scale.x = gt_traj_marker.scale.y = gt_traj_marker.scale.z = 0.5;
+
+    for(int i = 0; i < gt.size(); i++) {
+      geometry_msgs::Point p;
+      p.x = (delta*gt[i]).val[0][3];
+      p.y = (delta*gt[i]).val[1][3];
+      p.z = (delta*gt[i]).val[2][3];
+      gt_traj_marker.points.push_back(p);
+      std_msgs::ColorRGBA c;
+      c.r = 1.0;
+      c.g = 1.0;
+      c.b = 1.0;
+      c.a = 1.0;
+      gt_traj_marker.colors.push_back(c);
+    }
+
+    gt_markers_pub.publish(gt_traj_marker);
+
+    /***************************************************************/
+    std::ofstream myfile;
+    myfile.open ("poses.txt");
+    std::ofstream myfile2;
+    myfile2.open ("gt.txt");
+    std::ofstream myfile3;
+    myfile3.open ("dist.txt");
+    std::ofstream myfile4;
+    myfile4.open ("stats.txt");
+    std::cout << "dist" << std::endl;
+    float sum = 0.0;
+    float sum_sq = 0.0;
+    int j = 0;
+    for(int i = 0; i < gt.size(); i++) {
+      //std::cout << "here " << i << std::endl;
+      int index = isIndexFromKeyframe(i);
+      //std::cout << "external i: " << i << std::endl;
+      //std::cout << "external index: " << index << std::endl;
+      if(index >= 0) {
+        j++;
+        //std::cout << "size: " << keyframes.size() << std::endl;
+        Eigen::Isometry3d pose = keyframes[index]->node->estimate();
+        
+        Matrix pose_matrix = Matrix::eye(4);
+        pose_matrix.val[0][0] = pose.linear()(0,0); 
+        pose_matrix.val[0][1] = pose.linear()(0,1);
+        pose_matrix.val[0][2] = pose.linear()(0,2);
+        pose_matrix.val[0][3] = pose.translation()(0);
+        pose_matrix.val[1][0] = pose.linear()(1,0);
+        pose_matrix.val[1][1] = pose.linear()(1,1);
+        pose_matrix.val[1][2] = pose.linear()(1,2);
+        pose_matrix.val[1][3] = pose.translation()(1); 
+        pose_matrix.val[2][0] = pose.linear()(2,0); 
+        pose_matrix.val[2][1] = pose.linear()(2,1); 
+        pose_matrix.val[2][2] = pose.linear()(2,2); 
+        pose_matrix.val[2][3] = pose.translation()(2);
+        
+        Matrix gt_trans = delta*gt[i];
+        Matrix pose_error        = Matrix::inv(pose_matrix)*gt_trans;
+        //std::cout << "pose_error: " << pose_error << std::endl;
+
+        float dx = pose_error.val[0][3];
+        float dy = pose_error.val[1][3];
+        float dz = pose_error.val[2][3];
+        float dist = sqrt(dx*dx+dy*dy+dz*dz);
+        sum += dist;
+        sum_sq += (dx*dx+dy*dy+dz*dz);
+        std::cout << dist << " " << dx << " " << dy << " " << dz << std::endl;
+        myfile3 << i << " " << dist << std::endl;
+        myfile << pose.rotation()(0,0) << " " << pose.rotation()(0,1) << " " << pose.rotation()(0,2) << " " << pose.translation()(0) << " " << pose.rotation()(1,0) << " " << pose.rotation()(1,1) << " " << pose.rotation()(1,2) << " " << pose.translation()(1) << " " << pose.rotation()(2,0) << " " << pose.rotation()(2,1) << " " << pose.rotation()(2,2) << " " << pose.translation()(2) << "\n";
+        myfile2 << gt_trans.val[0][0] << " " << gt_trans.val[0][1] << " " << gt_trans.val[0][2] << " " << gt_trans.val[0][3] << " " << gt_trans.val[1][0] << " " << gt_trans.val[1][1] << " " << gt_trans.val[1][2] << " " << gt_trans.val[1][3] << " " << gt_trans.val[2][0] << " " << gt_trans.val[2][1] << " " << gt_trans.val[2][2] << " " << gt_trans.val[2][3] << "\n";
+      
+      }  
+    }
+    float t_mean = sum/(j);
+    float t_variance = sqrt((sum_sq/(j))-(t_mean*t_mean));
+
+    myfile4 << t_mean << " " << t_variance << std::endl;
+
+    myfile.close();
+    myfile2.close();
+    myfile3.close();
+    myfile4.close();
+    std::cout << "finished" << std::endl;
+
+    /********************************/
+
+  }
+
+  int isIndexFromKeyframe(int index) {
+    //std::cout << "search " << index << std::endl;
+    for(int i = 0; i < keyframes.size(); i++) {
+      //std::cout << "i " << i << std::endl;
+      //std::cout << "internal index: " << keyframes[i]->index << std::endl;
+      if(keyframes[i]->index==index) {
+        //std::cout << "found" << std::endl;
+        return i;
+      }
+    }
+    //std::cout << "not found" << std::endl;
+    return -1;
   }
 
   /**
@@ -636,11 +1138,65 @@ private:
 
     traj_marker.points.resize(keyframes.size());
     traj_marker.colors.resize(keyframes.size());
+
+    /***********************************************************************/
+    Eigen::Matrix4d Tr = Eigen::Matrix4d::Identity();
+   
+    Tr(0, 0) = -1.857739385241e-03;
+    Tr(0, 1) = -9.999659513510e-01;
+    Tr(0, 2) = -8.039975204516e-03;
+    Tr(0, 3) = -4.784029760483e-03;
+    Tr(1, 0) = -6.481465826011e-03;
+    Tr(1, 1) = 8.051860151134e-03;
+    Tr(1, 2) = -9.999466081774e-01;
+    Tr(1, 3) = -7.337429464231e-02;
+    Tr(2, 0) = 9.999773098287e-01;
+    Tr(2, 1) = -1.805528627661e-03;
+    Tr(2, 2) = -6.496203536139e-03;
+    Tr(2, 3) = -3.339968064433e-01;
+    std::cout << "Tr: " << Tr << std::endl;
+
+    Eigen::Matrix4d align = Eigen::Matrix4d::Identity(); 
+    align(0,0) = gt[0].val[0][0];
+    align(0,1) = gt[0].val[0][1];
+    align(0,2) = gt[0].val[0][2];
+    align(0,3) = gt[0].val[0][3];
+    align(1,0) = gt[0].val[1][0];
+    align(1,1) = gt[0].val[1][1];
+    align(1,2) = gt[0].val[1][2];
+    align(1,3) = gt[0].val[1][3];
+    align(2,0) = gt[0].val[2][0];
+    align(2,1) = gt[0].val[2][1];
+    align(2,2) = gt[0].val[2][2];
+    align(2,3) = gt[0].val[2][3];
+    std::cout << "gt[0]: " << gt[0] << "\nAlign: " << align << std::endl;
+
+    Eigen::Isometry3d initial_pose_iso_2 = keyframes[0]->node->estimate();   
+    Eigen::Matrix4d initial_pose_2 = Eigen::Matrix4d::Identity();
+    initial_pose_2.block<3, 3>(0, 0) = initial_pose_iso_2.linear();
+    initial_pose_2.block<3, 1>(0, 3) = initial_pose_iso_2.translation();
+    std::cout << "initial_pose_2: " << initial_pose_2 << std::endl;
+    /*******************************************************************************/
+
     for(int i = 0; i < keyframes.size(); i++) {
       Eigen::Vector3d pos = keyframes[i]->node->estimate().translation();
       traj_marker.points[i].x = pos.x();
       traj_marker.points[i].y = pos.y();
       traj_marker.points[i].z = pos.z();
+
+      /*Eigen::Matrix4d temp = Eigen::Matrix4d::Identity();
+      temp.block<3, 1>(0, 3) = keyframes[i]->node->estimate().translation();
+      temp.block<3, 3>(0, 0) = keyframes[i]->node->estimate().linear();
+      std::cout << "temp: " << temp << std::endl;
+      std::cout << "temp trans: " << keyframes[i]->node->estimate().translation() << std::endl;
+      std::cout << "temp lin: " << keyframes[i]->node->estimate().linear() << std::endl;
+      
+      Eigen::Matrix4d pos = align*Tr*(initial_pose_2.inverse())*temp;
+      std::cout << "temp: " << temp << "\n pos: " << pos << std::endl;
+
+      traj_marker.points[i].x = pos(0, 3);
+      traj_marker.points[i].y = pos(1, 3);
+      traj_marker.points[i].z = pos(2, 3);*/
 
       double p = static_cast<double>(i) / keyframes.size();
       traj_marker.colors[i].r = 1.0 - p;
@@ -979,6 +1535,23 @@ private:
   std::unique_ptr<NmeaSentenceParser> nmea_parser;
 
   std::unique_ptr<InformationMatrixCalculator> inf_calclator;
+
+  // map 
+  std::vector<BuildingNode::Ptr> buildings;
+  float lidar_range;
+  int enter;
+  int zero_utm_zone;
+  char zero_utm_band;
+  ros::Publisher buildings_pub;
+  ros::Publisher odom_pub;
+  ros::Publisher transformed_pub;
+  ros::Publisher original_odom_pub;
+  double ground_floor_max_thresh;
+  double radius_search;
+  int min_neighbors_in_radius;
+  int ii;
+  std::vector<Matrix> gt;
+  ros::Publisher gt_markers_pub;
 };
 
 }  // namespace hdl_graph_slam

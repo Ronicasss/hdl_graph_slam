@@ -7,6 +7,7 @@
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <boost/optional.hpp>
+#include "hdl_graph_slam/building_node.hpp"
 
 namespace g2o {
 class VertexSE3;
@@ -25,7 +26,7 @@ public:
   using PointT = pcl::PointXYZI;
   using Ptr = std::shared_ptr<KeyFrame>;
 
-  KeyFrame(const ros::Time& stamp, const Eigen::Isometry3d& odom, double accum_distance, const pcl::PointCloud<PointT>::ConstPtr& cloud);
+  KeyFrame(const ros::Time& stamp, const Eigen::Isometry3d& odom, double accum_distance, const pcl::PointCloud<PointT>::ConstPtr& cloud, int index);
   KeyFrame(const std::string& directory, g2o::HyperGraph* graph);
   virtual ~KeyFrame();
 
@@ -47,6 +48,11 @@ public:
   boost::optional<Eigen::Quaterniond> orientation;  //
 
   g2o::VertexSE3* node;  // node instance
+
+  int index;
+  boost::optional<int> utm_zone;                  // UTM zone and band needed for conversion to lla
+  boost::optional<char> utm_band; 
+  std::vector<BuildingNode::Ptr> buildings_nodes;       // buildings associated to this keyframe
 };
 
 /**
