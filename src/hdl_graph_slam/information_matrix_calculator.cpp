@@ -90,11 +90,11 @@ Eigen::MatrixXd InformationMatrixCalculator::calc_information_matrix_buildings(c
   //double fitness_score = calc_fitness_score(cloud1, cloud2, relpose);
   //std::cout << "ft: " << fitness_score << std::endl;
   double fitness_score = calc_fitness_score(cloud1, cloud2, relpose, 2.0);
-  std::cout << "ft_t: " << fitness_score << std::endl;
+  /*std::cout << "ft_t: " << fitness_score << std::endl;
   std::cout << "min x: " << b_min_stddev_x << std::endl;
   std::cout << "max x: " << b_max_stddev_x << std::endl;
   std::cout << "min q: " << b_min_stddev_q << std::endl;
-  std::cout << "max q: " << b_max_stddev_q << std::endl;
+  std::cout << "max q: " << b_max_stddev_q << std::endl;*/
 
   double min_var_x = std::pow(b_min_stddev_x, 2);
   //std::cout << "min_var_x: " << min_var_x << std::endl;
@@ -109,8 +109,8 @@ Eigen::MatrixXd InformationMatrixCalculator::calc_information_matrix_buildings(c
   //std::cout << "w_x: " << w_x << std::endl;
   float w_q = weight(b_var_gain_a, b_fitness_score_thresh, min_var_q, max_var_q, fitness_score);
   //std::cout << "w_q: " << w_q << std::endl;
-  std::cout << "var gain: " << b_var_gain_a << std::endl;
-  std::cout << "score thresh: " << b_fitness_score_thresh << std::endl;
+  //std::cout << "var gain: " << b_var_gain_a << std::endl;
+  //std::cout << "score thresh: " << b_fitness_score_thresh << std::endl;
 
   Eigen::MatrixXd inf = Eigen::MatrixXd::Identity(6, 6);
   inf.topLeftCorner(3, 3).array() /= w_x;

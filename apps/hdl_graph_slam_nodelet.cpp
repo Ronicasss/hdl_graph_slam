@@ -565,8 +565,8 @@ private:
         if(new_buildings.size() > 0) {
           std::cout << "We found buildings!" << std::endl;
           b_updated = true;
-          e_zero_utm(2) = 0;
-          e_utm_coord(2) = 0;
+          //e_zero_utm(2) = 0;
+          //e_utm_coord(2) = 0;
 
           std::vector<BuildingNode::Ptr> bnodes; // vector containing all buildings nodes (new and not new)
           // buildingsCloud is the cloud containing all buildings
@@ -753,7 +753,7 @@ private:
           pcl::PointCloud<PointT>::Ptr otempcloud(new pcl::PointCloud<PointT>);
           pcl::copyPointCloud(*odomCloud,*otempcloud); // convert pcl odom pxyz to pxyzi
           Eigen::MatrixXd information_matrix = inf_calclator->calc_information_matrix_buildings(btempcloud, otempcloud, t_s_bs_iso);
-          std::cout << "information matrix: " << information_matrix << std::endl;
+          //std::cout << "information matrix: " << information_matrix << std::endl;
 
           /*Eigen::Matrix3d rot = t_s_bs.block<3, 3>(0, 0);
           //std::cout << "rot: " << rot << std::endl;
@@ -872,7 +872,7 @@ private:
       read_until_pub.publish(read_until);
     }
 
-    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue() & !update_buildings_nodes()) {
+    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue()) {
       return;
     }
 
@@ -924,78 +924,56 @@ private:
       markers_pub.publish(markers);
     }
 
-    Matrix pose_align = Matrix::eye(4);
+    /********************************************************************************************/
     tf::StampedTransform transform_t;
-    tf_listener.waitForTransform("map", "camera_gray_left", ros::Time(0), ros::Duration(2.0));
-    tf_listener.lookupTransform("map", "camera_gray_left", ros::Time(0), transform_t);
+    tf_listener.lookupTransform("base_link", "camera_gray_left", ros::Time(0), transform_t);
     Eigen::Quaterniond q;
     tf::quaternionTFToEigen(transform_t.getRotation(), q);
     Eigen::Vector3d v;
     tf::vectorTFToEigen (transform_t.getOrigin(), v);
     Eigen::Matrix3d rot = q.normalized().toRotationMatrix();
-    std::cout << "tf trans: " << v << std::endl;
-    std::cout << "tf rot: " << rot << std::endl;
-    std::cout << "last kf tr: " << keyframes.back()->node->estimate().translation() << std::endl;
-    std::cout << "last kf rot: " << keyframes.back()->node->estimate().linear() << std::endl;
-    
-    /*pose_align.val[0][0] = rot(0,0);
-    pose_align.val[0][1] = rot(0,1);
-    pose_align.val[0][2] = rot(0,2);
-    pose_align.val[0][3] = v(0);
-    pose_align.val[1][0] = rot(1,0);
-    pose_align.val[1][1] = rot(1,1);
-    pose_align.val[1][2] = rot(1,2);
-    pose_align.val[1][3] = v(1);
-    pose_align.val[2][0] = rot(2,0);
-    pose_align.val[2][1] = rot(2,1);
-    pose_align.val[2][2] = rot(2,2);
-    pose_align.val[2][3] = v(2);
-    */
+    //std::cout << "base_link -> camera_gray_left trans: " << v << std::endl;
+    //std::cout << "base_link -> camera_gray_left rot: " << rot << std::endl;
 
-    // compute initial guess
-    Eigen::Quaterniond orientation = *(keyframes[0]->orientation);
-    Eigen::Vector3d pos = keyframes[0]->utm_coord.get();
-    orientation.normalize();
-    Eigen::Matrix3d R = orientation.toRotationMatrix();
-    /*Eigen::Isometry3d initial_pose_iso;
-    initial_pose_iso.translation() = pos;
-    initial_pose_iso.linear() = R;*/
+    Eigen::Isometry3d estimate = keyframes[0]->node->estimate();
+    Eigen::Isometry3d base_camera = Eigen::Isometry3d::Identity();
+    base_camera.linear() = q.normalized().toRotationMatrix();
+    base_camera.translation() = v;
+    Eigen::Isometry3d tr = estimate*base_camera;
+    /*std::cout << "estimate trans: " << estimate.translation() << std::endl;
+    std::cout << "estimate rot: " << estimate.linear() << std::endl;
+    std::cout << "base_camera trans: " << base_camera.translation() << std::endl;
+    std::cout << "base_camera rot: " << base_camera.linear() << std::endl;*/ 
 
-    
-    Matrix initial_pose = Matrix::eye(4);
-    Eigen::Isometry3d initial_pose_iso = keyframes[0]->node->estimate();        
-    
-    initial_pose.val[0][0] = initial_pose_iso.linear()(0,0); 
-    initial_pose.val[0][1] = initial_pose_iso.linear()(0,1);
-    initial_pose.val[0][2] = initial_pose_iso.linear()(0,2);
-    initial_pose.val[0][3] = initial_pose_iso.translation()(0);
-    initial_pose.val[1][0] = initial_pose_iso.linear()(1,0);
-    initial_pose.val[1][1] = initial_pose_iso.linear()(1,1);
-    initial_pose.val[1][2] = initial_pose_iso.linear()(1,2);
-    initial_pose.val[1][3] = initial_pose_iso.translation()(1); 
-    initial_pose.val[2][0] = initial_pose_iso.linear()(2,0); 
-    initial_pose.val[2][1] = initial_pose_iso.linear()(2,1); 
-    initial_pose.val[2][2] = initial_pose_iso.linear()(2,2); 
-    initial_pose.val[2][3] = initial_pose_iso.translation()(2);
-    std::cout << "initial pose: " << initial_pose << std::endl;
+    Matrix tr_m = Matrix::eye(4);
+    tr_m.val[0][0] = tr.linear()(0,0); 
+    tr_m.val[0][1] = tr.linear()(0,1);
+    tr_m.val[0][2] = tr.linear()(0,2);
+    tr_m.val[0][3] = tr.translation()(0);
+    tr_m.val[1][0] = tr.linear()(1,0);
+    tr_m.val[1][1] = tr.linear()(1,1);
+    tr_m.val[1][2] = tr.linear()(1,2);
+    tr_m.val[1][3] = tr.translation()(1); 
+    tr_m.val[2][0] = tr.linear()(2,0); 
+    tr_m.val[2][1] = tr.linear()(2,1); 
+    tr_m.val[2][2] = tr.linear()(2,2); 
+    tr_m.val[2][3] = tr.translation()(2);
+    //std::cout << "tr_m: " << tr_m << std::endl;
 
-    pose_align.val[0][0] = 0;
-    pose_align.val[0][1] = 0;
-    pose_align.val[0][2] = 1;
-    pose_align.val[0][3] = 0;
-    pose_align.val[1][0] = -1;
-    pose_align.val[1][1] = 0;
-    pose_align.val[1][2] = 0;
-    pose_align.val[1][3] = 0;
-    pose_align.val[2][0] = 0;
-    pose_align.val[2][1] = -1;
-    pose_align.val[2][2] = 0;
-    pose_align.val[2][3] = 0;
-     
-    std::cout << "pose align: " << pose_align << std::endl;
-     
+    // delta transforms gt to keyframes, used for visualization
     Matrix delta = Matrix::eye(4);
-    delta = initial_pose*pose_align*(Matrix::inv(gt[0]));
+    delta = tr_m*Matrix::inv(gt[0]);
+    
+    // delta2 transforms keyframes to gt, used for error calculation
+    Matrix delta_2 = Matrix::eye(4);
+    delta_2 = gt[0] * Matrix::inv(tr_m);
+    
+    //
+    std::ofstream myfile5;
+    myfile5.open("align.txt");
+    myfile5 << delta.val[0][0] << " " << delta.val[0][1] << " " << delta.val[0][2] << " " << delta.val[0][3] << " " << delta.val[1][0] << " " << delta.val[1][1] << " " << delta.val[1][2] << " " << delta.val[1][3] << " " << delta.val[2][0] << " " << delta.val[2][1] << " " << delta.val[2][2] << " " << delta.val[2][3] << "\n";
+    myfile5 << delta_2.val[0][0] << " " << delta_2.val[0][1] << " " << delta_2.val[0][2] << " " << delta_2.val[0][3] << " " << delta_2.val[1][0] << " " << delta_2.val[1][1] << " " << delta_2.val[1][2] << " " << delta_2.val[1][3] << " " << delta_2.val[2][0] << " " << delta_2.val[2][1] << " " << delta_2.val[2][2] << " " << delta_2.val[2][3] << "\n";
+    myfile5.close();
     
     visualization_msgs::Marker gt_traj_marker;
     gt_traj_marker.header.frame_id = "map";
@@ -1023,8 +1001,7 @@ private:
     }
 
     gt_markers_pub.publish(gt_traj_marker);
-
-    /***************************************************************/
+    /***************************************************************************************/
     std::ofstream myfile;
     myfile.open ("poses.txt");
     std::ofstream myfile2;
@@ -1038,13 +1015,9 @@ private:
     float sum_sq = 0.0;
     int j = 0;
     for(int i = 0; i < gt.size(); i++) {
-      //std::cout << "here " << i << std::endl;
       int index = isIndexFromKeyframe(i);
-      //std::cout << "external i: " << i << std::endl;
-      //std::cout << "external index: " << index << std::endl;
       if(index >= 0) {
         j++;
-        //std::cout << "size: " << keyframes.size() << std::endl;
         Eigen::Isometry3d pose = keyframes[index]->node->estimate();
         
         Matrix pose_matrix = Matrix::eye(4);
@@ -1061,8 +1034,8 @@ private:
         pose_matrix.val[2][2] = pose.linear()(2,2); 
         pose_matrix.val[2][3] = pose.translation()(2);
         
-        Matrix gt_trans = delta*gt[i];
-        Matrix pose_error        = Matrix::inv(pose_matrix)*gt_trans;
+        Matrix pose_trans = delta_2*pose_matrix;
+        Matrix pose_error = Matrix::inv(gt[i])*pose_trans;
         //std::cout << "pose_error: " << pose_error << std::endl;
 
         float dx = pose_error.val[0][3];
@@ -1073,9 +1046,9 @@ private:
         sum_sq += (dx*dx+dy*dy+dz*dz);
         std::cout << dist << " " << dx << " " << dy << " " << dz << std::endl;
         myfile3 << i << " " << dist << std::endl;
-        myfile << pose.rotation()(0,0) << " " << pose.rotation()(0,1) << " " << pose.rotation()(0,2) << " " << pose.translation()(0) << " " << pose.rotation()(1,0) << " " << pose.rotation()(1,1) << " " << pose.rotation()(1,2) << " " << pose.translation()(1) << " " << pose.rotation()(2,0) << " " << pose.rotation()(2,1) << " " << pose.rotation()(2,2) << " " << pose.translation()(2) << "\n";
-        myfile2 << gt_trans.val[0][0] << " " << gt_trans.val[0][1] << " " << gt_trans.val[0][2] << " " << gt_trans.val[0][3] << " " << gt_trans.val[1][0] << " " << gt_trans.val[1][1] << " " << gt_trans.val[1][2] << " " << gt_trans.val[1][3] << " " << gt_trans.val[2][0] << " " << gt_trans.val[2][1] << " " << gt_trans.val[2][2] << " " << gt_trans.val[2][3] << "\n";
+        myfile << pose_trans.val[0][0] << " " << pose_trans.val[0][1] << " " << pose_trans.val[0][2] << " " << pose_trans.val[0][3] << " " << pose_trans.val[1][0] << " " << pose_trans.val[1][1] << " " << pose_trans.val[1][2] << " " << pose_trans.val[1][3] << " " << pose_trans.val[2][0] << " " << pose_trans.val[2][1] << " " << pose_trans.val[2][2] << " " << pose_trans.val[2][3] << "\n";
       
+        myfile2 << gt[i].val[0][0] << " " << gt[i].val[0][1] << " " << gt[i].val[0][2] << " " << gt[i].val[0][3] << " " << gt[i].val[1][0] << " " << gt[i].val[1][1] << " " << gt[i].val[1][2] << " " << gt[i].val[1][3] << " " << gt[i].val[2][0] << " " << gt[i].val[2][1] << " " << gt[i].val[2][2] << " " << gt[i].val[2][3] << "\n";
       }  
     }
     float t_mean = sum/(j);
@@ -1089,7 +1062,7 @@ private:
     myfile4.close();
     std::cout << "finished" << std::endl;
 
-    /********************************/
+    /****************************************************************************************/
 
   }
 
@@ -1140,42 +1113,37 @@ private:
     traj_marker.colors.resize(keyframes.size());
 
     /***********************************************************************/
-    Eigen::Matrix4d Tr = Eigen::Matrix4d::Identity();
-   
-    Tr(0, 0) = -1.857739385241e-03;
-    Tr(0, 1) = -9.999659513510e-01;
-    Tr(0, 2) = -8.039975204516e-03;
-    Tr(0, 3) = -4.784029760483e-03;
-    Tr(1, 0) = -6.481465826011e-03;
-    Tr(1, 1) = 8.051860151134e-03;
-    Tr(1, 2) = -9.999466081774e-01;
-    Tr(1, 3) = -7.337429464231e-02;
-    Tr(2, 0) = 9.999773098287e-01;
-    Tr(2, 1) = -1.805528627661e-03;
-    Tr(2, 2) = -6.496203536139e-03;
-    Tr(2, 3) = -3.339968064433e-01;
-    std::cout << "Tr: " << Tr << std::endl;
+    /*Eigen::Matrix4d gt_m = Eigen::Matrix4d::Identity(); 
+    gt_m(0,0) = gt[0].val[0][0];
+    gt_m(0,1) = gt[0].val[0][1];
+    gt_m(0,2) = gt[0].val[0][2];
+    gt_m(0,3) = gt[0].val[0][3];
+    gt_m(1,0) = gt[0].val[1][0];
+    gt_m(1,1) = gt[0].val[1][1];
+    gt_m(1,2) = gt[0].val[1][2];
+    gt_m(1,3) = gt[0].val[1][3];
+    gt_m(2,0) = gt[0].val[2][0];
+    gt_m(2,1) = gt[0].val[2][1];
+    gt_m(2,2) = gt[0].val[2][2];
+    gt_m(2,3) = gt[0].val[2][3];
 
-    Eigen::Matrix4d align = Eigen::Matrix4d::Identity(); 
-    align(0,0) = gt[0].val[0][0];
-    align(0,1) = gt[0].val[0][1];
-    align(0,2) = gt[0].val[0][2];
-    align(0,3) = gt[0].val[0][3];
-    align(1,0) = gt[0].val[1][0];
-    align(1,1) = gt[0].val[1][1];
-    align(1,2) = gt[0].val[1][2];
-    align(1,3) = gt[0].val[1][3];
-    align(2,0) = gt[0].val[2][0];
-    align(2,1) = gt[0].val[2][1];
-    align(2,2) = gt[0].val[2][2];
-    align(2,3) = gt[0].val[2][3];
-    std::cout << "gt[0]: " << gt[0] << "\nAlign: " << align << std::endl;
+    tf::StampedTransform transform_t;
+    tf_listener.lookupTransform("base_link", "camera_gray_left", ros::Time(0), transform_t);
+    Eigen::Quaterniond q;
+    tf::quaternionTFToEigen(transform_t.getRotation(), q);
+    Eigen::Vector3d v;
+    tf::vectorTFToEigen (transform_t.getOrigin(), v);
+    Eigen::Matrix3d rot = q.normalized().toRotationMatrix();
+    //std::cout << "base_link -> camera_gray_left trans: " << v << std::endl;
+    //std::cout << "base_link -> camera_gray_left rot: " << rot << std::endl;
 
-    Eigen::Isometry3d initial_pose_iso_2 = keyframes[0]->node->estimate();   
-    Eigen::Matrix4d initial_pose_2 = Eigen::Matrix4d::Identity();
-    initial_pose_2.block<3, 3>(0, 0) = initial_pose_iso_2.linear();
-    initial_pose_2.block<3, 1>(0, 3) = initial_pose_iso_2.translation();
-    std::cout << "initial_pose_2: " << initial_pose_2 << std::endl;
+    Eigen::Isometry3d estimate = keyframes[0]->node->estimate();
+    Eigen::Matrix4d estimate_m = Eigen::Matrix4d::Identity();
+    estimate_m.block<3, 1>(0, 3) = estimate.translation();
+    estimate_m.block<3, 3>(0, 0) = estimate.linear();
+    Eigen::Matrix4d base_camera_m = Eigen::Matrix4d::Identity();
+    base_camera_m.block<3, 1>(0, 3) = v;
+    base_camera_m.block<3, 3>(0, 0) = q.normalized().toRotationMatrix();*/
     /*******************************************************************************/
 
     for(int i = 0; i < keyframes.size(); i++) {
@@ -1184,19 +1152,17 @@ private:
       traj_marker.points[i].y = pos.y();
       traj_marker.points[i].z = pos.z();
 
+      /***************************************************************************************/
       /*Eigen::Matrix4d temp = Eigen::Matrix4d::Identity();
       temp.block<3, 1>(0, 3) = keyframes[i]->node->estimate().translation();
       temp.block<3, 3>(0, 0) = keyframes[i]->node->estimate().linear();
-      std::cout << "temp: " << temp << std::endl;
-      std::cout << "temp trans: " << keyframes[i]->node->estimate().translation() << std::endl;
-      std::cout << "temp lin: " << keyframes[i]->node->estimate().linear() << std::endl;
       
-      Eigen::Matrix4d pos = align*Tr*(initial_pose_2.inverse())*temp;
-      std::cout << "temp: " << temp << "\n pos: " << pos << std::endl;
+      Eigen::Matrix4d pos = gt_m*(base_camera_m.inverse())*(estimate_m.inverse())*temp;
 
       traj_marker.points[i].x = pos(0, 3);
       traj_marker.points[i].y = pos(1, 3);
       traj_marker.points[i].z = pos(2, 3);*/
+      /**************************************************************************************/
 
       double p = static_cast<double>(i) / keyframes.size();
       traj_marker.colors[i].r = 1.0 - p;

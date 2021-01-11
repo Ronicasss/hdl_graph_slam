@@ -32,7 +32,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: PointCloud2
+    SyncSource: ""
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -59,54 +59,19 @@ Visualization Manager:
       Reference Frame: <Fixed Frame>
       Value: true
     - Class: rviz/TF
-      Enabled: true
+      Enabled: false
       Frame Timeout: 50
       Frames:
         All Enabled: true
-        base_link:
-          Value: true
-        camera_color_left:
-          Value: true
-        camera_color_right:
-          Value: true
-        camera_gray_left:
-          Value: true
-        camera_gray_right:
-          Value: true
-        imu_link:
-          Value: true
-        keyframe:
-          Value: true
-        map:
-          Value: true
-        odom:
-          Value: true
-        velo_link:
-          Value: true
       Marker Scale: 15
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
       Tree:
-        map:
-          odom:
-            base_link:
-              imu_link:
-                camera_color_left:
-                  {}
-                camera_color_right:
-                  {}
-                camera_gray_left:
-                  {}
-                camera_gray_right:
-                  {}
-                velo_link:
-                  {}
-            keyframe:
-              {}
+        {}
       Update Interval: 0
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -343,11 +308,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 3.5963449478149414
+      Scale: 4.135247707366943
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 101.21388244628906
-      Y: 47.270206451416016
+      X: -1.1806247234344482
+      Y: 81.93148040771484
     Saved: ~
 Window Geometry:
   Displays:
