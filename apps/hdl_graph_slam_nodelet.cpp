@@ -872,7 +872,7 @@ private:
       read_until_pub.publish(read_until);
     }
 
-    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue()) {
+    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue() & update_buildings_nodes()) {
       return;
     }
 
@@ -960,20 +960,28 @@ private:
     tr_m.val[2][3] = tr.translation()(2);
     //std::cout << "tr_m: " << tr_m << std::endl;
 
+    /*******************DO NOT CANCEL******************************************************/
     // delta transforms gt to keyframes, used for visualization
-    Matrix delta = Matrix::eye(4);
+    /*Matrix delta = Matrix::eye(4);
     delta = tr_m*Matrix::inv(gt[0]);
     
     // delta2 transforms keyframes to gt, used for error calculation
     Matrix delta_2 = Matrix::eye(4);
     delta_2 = gt[0] * Matrix::inv(tr_m);
     
-    //
+    
     std::ofstream myfile5;
     myfile5.open("align.txt");
     myfile5 << delta.val[0][0] << " " << delta.val[0][1] << " " << delta.val[0][2] << " " << delta.val[0][3] << " " << delta.val[1][0] << " " << delta.val[1][1] << " " << delta.val[1][2] << " " << delta.val[1][3] << " " << delta.val[2][0] << " " << delta.val[2][1] << " " << delta.val[2][2] << " " << delta.val[2][3] << "\n";
     myfile5 << delta_2.val[0][0] << " " << delta_2.val[0][1] << " " << delta_2.val[0][2] << " " << delta_2.val[0][3] << " " << delta_2.val[1][0] << " " << delta_2.val[1][1] << " " << delta_2.val[1][2] << " " << delta_2.val[1][3] << " " << delta_2.val[2][0] << " " << delta_2.val[2][1] << " " << delta_2.val[2][2] << " " << delta_2.val[2][3] << "\n";
-    myfile5.close();
+    myfile5.close();*/
+
+    std::vector<Matrix> deltas = loadPoses("align.txt");
+    std::cout << "read delta: " << deltas[0] << std::endl; 
+    std::cout << "read delta_2: " << deltas[1] << std::endl; 
+    Matrix delta = deltas[0];
+    Matrix delta_2 = deltas[1];
+    /****************************************************************************************/
     
     visualization_msgs::Marker gt_traj_marker;
     gt_traj_marker.header.frame_id = "map";
