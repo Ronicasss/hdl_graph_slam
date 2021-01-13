@@ -112,6 +112,9 @@ public:
     gt = loadPoses("/home/veronica/Desktop/Thesis/07.txt");
     std::cout << "gt poses loaded: " << gt.size() << std::endl;
     gt_markers_pub = mt_nh.advertise<visualization_msgs::Marker>("/hdl_graph_slam/gt_markers", 16);
+    first_guess = true;
+    prev_guess = Eigen::Matrix4f::Identity();
+    prev_pose = Eigen::Matrix4f::Identity();
 
     //
     anchor_node = nullptr;
@@ -476,7 +479,6 @@ private:
 
     auto remove_loc = std::upper_bound(imu_queue.begin(), imu_queue.end(), keyframes.back()->stamp, [=](const ros::Time& stamp, const sensor_msgs::ImuConstPtr& imu) { return stamp < imu->header.stamp; });
     imu_queue.erase(imu_queue.begin(), remove_loc);
-
     return updated;
   }
 
@@ -537,6 +539,7 @@ private:
     auto remove_loc = std::upper_bound(floor_coeffs_queue.begin(), floor_coeffs_queue.end(), latest_keyframe_stamp, [=](const ros::Time& stamp, const hdl_graph_slam::FloorCoeffsConstPtr& coeffs) { return stamp < coeffs->header.stamp; });
     floor_coeffs_queue.erase(floor_coeffs_queue.begin(), remove_loc);
 
+    //std::cout << "floor_updated: " << updated << std::endl;
     return updated;
   }
 
@@ -567,7 +570,7 @@ private:
           b_updated = true;
           //e_zero_utm(2) = 0;
           //e_utm_coord(2) = 0;
-
+ 
           std::vector<BuildingNode::Ptr> bnodes; // vector containing all buildings nodes (new and not new)
           // buildingsCloud is the cloud containing all buildings
           pcl::PointCloud<pcl::PointXYZ>::Ptr buildingsCloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -639,11 +642,12 @@ private:
           //std::cout << "rad: " << rad->getRadiusSearch() << " neighbors: " << rad->getMinNeighborsInRadius() << std::endl; 
           pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>());
           rad->setInputCloud(temp_cloud_3);
-          rad->filter(*odomCloud);
-          odomCloud->header = temp_cloud_3->header;
+          rad->filter(*temp_cloud_4);
+          temp_cloud_4->header = temp_cloud_3->header;
 
+          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_5(new pcl::PointCloud<pcl::PointXYZ>);
           // project the cloud on plane z=0
-          /*pcl::ProjectInliers<pcl::PointXYZ> proj;
+          pcl::ProjectInliers<pcl::PointXYZ> proj;
           pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
           coefficients->values.resize(4);
           coefficients->values[0]=0;
@@ -653,9 +657,23 @@ private:
           proj.setModelType(pcl::SACMODEL_PLANE);
           proj.setInputCloud (temp_cloud_4);
           proj.setModelCoefficients (coefficients);
-          proj.filter (*odomCloud);
-          std::cerr << "PointCloud before projection:" << temp_cloud_4->size() << ", after projection has: " << odomCloud->size () << " data points." << std::endl;
-          odomCloud->header = temp_cloud_4->header;*/
+          proj.filter (*temp_cloud_5);
+          temp_cloud_5->header = temp_cloud_4->header;
+
+          /*tf::StampedTransform transform_t;
+          tf_listener.lookupTransform("odom", "base_link", ros::Time(0), transform_t);
+          Eigen::Quaterniond q;
+          tf::quaternionTFToEigen(transform_t.getRotation(), q);
+          Eigen::Vector3d v;
+          tf::vectorTFToEigen (transform_t.getOrigin(), v);
+          Eigen::Matrix3d rot = q.normalized().toRotationMatrix();
+          Eigen::Matrix4d odom_base = Eigen::Matrix4d::Identity();
+          odom_base.block<3,1>(0,3) = v;
+          odom_base.block<3,3>(0,0) = rot;
+          pcl::transformPointCloud(*temp_cloud_5, *odomCloud, odom_base);
+          odomCloud->header = temp_cloud_5->header;*/
+          pcl::transformPointCloud(*temp_cloud_5, *odomCloud, (keyframe->odom).matrix());
+          odomCloud->header = temp_cloud_5->header;
 
            // publish original odom cloud
           sensor_msgs::PointCloud2Ptr oc_cloud_msg(new sensor_msgs::PointCloud2());
@@ -666,22 +684,47 @@ private:
           // publish odom cloud
           sensor_msgs::PointCloud2Ptr o_cloud_msg(new sensor_msgs::PointCloud2());
           pcl::toROSMsg(*odomCloud, *o_cloud_msg);
-          o_cloud_msg->header.frame_id = "base_link";
+          o_cloud_msg->header.frame_id = "odom";
           o_cloud_msg->header.stamp = keyframe->stamp;
           odom_pub.publish(o_cloud_msg);
           // publish buildings cloud
           sensor_msgs::PointCloud2Ptr b_cloud_msg(new sensor_msgs::PointCloud2());
           pcl::toROSMsg(*buildingsCloud, *b_cloud_msg);
-          b_cloud_msg->header.frame_id = map_frame_id;
+          b_cloud_msg->header.frame_id = "map";
           b_cloud_msg->header.stamp = keyframe->stamp;
           buildings_pub.publish(b_cloud_msg);
+
+          
+
           // compute initial guess
-          Eigen::Quaterniond orientation = *(keyframe->orientation);
+          /*Eigen::Quaterniond orientation = *(keyframe->orientation);
           orientation.normalize();
           Eigen::Matrix3f R = (orientation.cast<float>()).toRotationMatrix();
           Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
           guess.block<3,1>(0,3) = e_utm_coord.cast<float>();
           guess.block<3,3>(0,0) = R;
+          std::cout << "guess: " << guess << std::endl;*/
+          Eigen::Quaterniond orientation2 = *(keyframe->orientation);
+          orientation2.normalize();
+          Eigen::Matrix3f R2 = (orientation2.cast<float>()).toRotationMatrix();
+          Eigen::Matrix4f guess2 = Eigen::Matrix4f::Identity();
+          guess2.block<3,1>(0,3) = e_utm_coord.cast<float>();
+          guess2.block<3,3>(0,0) = R2;
+          std::cout << "guess2: " << guess2 << std::endl;
+
+          Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
+          if(first_guess) {
+            std::cout << "first guess" << std::endl;
+            Eigen::Quaterniond orientation = *(keyframe->orientation);
+            orientation.normalize();
+            Eigen::Matrix3f R = (orientation.cast<float>()).toRotationMatrix();
+            guess.block<3,1>(0,3) = e_utm_coord.cast<float>();
+            guess.block<3,3>(0,0) = R;
+            first_guess = false;
+          } else {
+            std::cout << "prev" << std::endl;
+            guess = prev_guess;
+          }
           std::cout << "guess: " << guess << std::endl;
 
           // gicp_omp registration
@@ -728,13 +771,13 @@ private:
           std::cout << "has converged:" << registration->hasConverged() << " score: " << registration->getFitnessScore() << std::endl;
           Eigen::Matrix4f transformation = registration->getFinalTransformation();
           std::cout<< "Transformation: " << transformation << std::endl;
+          prev_guess = transformation;
 
           // publish icp resulting transform
           sensor_msgs::PointCloud2Ptr t_cloud_msg(new sensor_msgs::PointCloud2());
           pcl::toROSMsg(*aligned, *t_cloud_msg);
-          t_cloud_msg->header.frame_id = map_frame_id;
-          t_cloud_msg->header.stamp = keyframe->stamp;
-          transformed_pub.publish(t_cloud_msg);
+          aligned->header.frame_id = "map";
+          transformed_pub.publish(aligned);
 
           Eigen::Matrix4d t_s_bs = transformation.cast<double>();
           
@@ -792,6 +835,7 @@ private:
         }
       } 
     }
+    //std::cout << "b_updated: " << b_updated << std::endl;
     return b_updated;
   }
 
@@ -858,6 +902,7 @@ private:
    * @param event
    */
   void optimization_timer_callback(const ros::WallTimerEvent& event) {
+    //std::cout << "entered opt" << std::endl;
     std::lock_guard<std::mutex> lock(main_thread_mutex);
 
     // add keyframes and floor coeffs in the queues to the pose graph
@@ -872,7 +917,9 @@ private:
       read_until_pub.publish(read_until);
     }
 
-    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue() & update_buildings_nodes()) {
+    //std::cout << "keyframe_updated: " << keyframe_updated << std::endl;
+    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue() & !update_buildings_nodes()) {
+      //std::cout << "no opt!" << std::endl;
       return;
     }
 
@@ -977,8 +1024,8 @@ private:
     myfile5.close();*/
 
     std::vector<Matrix> deltas = loadPoses("align.txt");
-    std::cout << "read delta: " << deltas[0] << std::endl; 
-    std::cout << "read delta_2: " << deltas[1] << std::endl; 
+    //std::cout << "read delta: " << deltas[0] << std::endl; 
+    //std::cout << "read delta_2: " << deltas[1] << std::endl; 
     Matrix delta = deltas[0];
     Matrix delta_2 = deltas[1];
     /****************************************************************************************/
@@ -1526,6 +1573,9 @@ private:
   int ii;
   std::vector<Matrix> gt;
   ros::Publisher gt_markers_pub;
+  bool first_guess;
+  Eigen::Matrix4f prev_guess;
+  Eigen::Matrix4f prev_pose;
 };
 
 }  // namespace hdl_graph_slam
