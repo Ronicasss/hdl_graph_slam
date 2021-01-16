@@ -26,6 +26,7 @@ class EdgePlanePerpendicular;
 class EdgePlanePriorNormal;
 class EdgePlanePriorDistance;
 class RobustKernelFactory;
+class EdgeSE3Prior;
 }  // namespace g2o
 
 namespace hdl_graph_slam {
@@ -118,6 +119,8 @@ public:
 
   g2o::EdgePlanePerpendicular* add_plane_perpendicular_edge(g2o::VertexPlane* v_plane1, g2o::VertexPlane* v_plane2, const Eigen::Vector3d& measurement, const Eigen::MatrixXd& information);
 
+  g2o::EdgeSE3Prior* add_se3_edge_prior(g2o::VertexSE3* v1, const Eigen::Isometry3d& relative_pose, const Eigen::MatrixXd& information_matrix);
+  
   void add_robust_kernel(g2o::HyperGraph::Edge* edge, const std::string& kernel_type, double kernel_size);
 
   /**

@@ -51,6 +51,10 @@ GraphSLAM::GraphSLAM(const std::string& solver_type) {
   graph.reset(new g2o::SparseOptimizer());
   g2o::SparseOptimizer* graph = dynamic_cast<g2o::SparseOptimizer*>(this->graph.get());
 
+  g2o::ParameterSE3Offset* offset = new g2o::ParameterSE3Offset;
+  offset->setId(0);
+  graph->addParameter(offset);
+
   std::cout << "construct solver: " << solver_type << std::endl;
   g2o::OptimizationAlgorithmFactory* solver_factory = g2o::OptimizationAlgorithmFactory::instance();
   g2o::OptimizationAlgorithmProperty solver_property;
@@ -79,6 +83,10 @@ GraphSLAM::~GraphSLAM() {
 
 void GraphSLAM::set_solver(const std::string& solver_type) {
   g2o::SparseOptimizer* graph = dynamic_cast<g2o::SparseOptimizer*>(this->graph.get());
+
+  g2o::ParameterSE3Offset* offset = new g2o::ParameterSE3Offset();
+  offset->setId(0);
+  graph->addParameter(offset);
 
   std::cout << "construct solver: " << solver_type << std::endl;
   g2o::OptimizationAlgorithmFactory* solver_factory = g2o::OptimizationAlgorithmFactory::instance();
@@ -267,6 +275,17 @@ g2o::EdgePlanePerpendicular* GraphSLAM::add_plane_perpendicular_edge(g2o::Vertex
   edge->setInformation(information);
   edge->vertices()[0] = v_plane1;
   edge->vertices()[1] = v_plane2;
+  graph->addEdge(edge);
+
+  return edge;
+}
+
+g2o::EdgeSE3Prior* GraphSLAM::add_se3_edge_prior(g2o::VertexSE3* v1, const Eigen::Isometry3d& relative_pose, const Eigen::MatrixXd& information_matrix) {
+  g2o::EdgeSE3Prior* edge(new g2o::EdgeSE3Prior());
+  edge->setMeasurement(relative_pose);
+  edge->setInformation(information_matrix);
+  edge->vertices()[0] = v1;
+  edge->setParameterId(0, 0);
   graph->addEdge(edge);
 
   return edge;

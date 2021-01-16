@@ -92,7 +92,7 @@
     <param name="gicp_correspondence_randomness" value="25" />
     <param name="gicp_max_optimizer_iterations" value="20" />
 
-    <param name="gicp_max_correspondance_distance" value="3" />
+    <param name="gicp_max_correspondance_distance" value="2" />
     <param name="gicp_euclidean_fitness_epsilon" value="-1.79e308" />
     <param name="gicp_ransac_outlier_threshold" value="0.05" />
 

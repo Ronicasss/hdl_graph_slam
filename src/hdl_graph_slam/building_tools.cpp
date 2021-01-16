@@ -166,9 +166,9 @@ namespace hdl_graph_slam {
 	std::string BuildingTools::downloadBuildings(double lat, double lon, double rad) {
 		std::string result;
 		try {
-			std::string url = "https://overpass.nchc.org.tw/api/interpreter?data=way[%27building%27](around:" + std::to_string(rad) + "," + std::to_string(lat) + "," + std::to_string(lon) + ");%20(._;%3E;);out;";
+			//std::string url = "https://overpass.nchc.org.tw/api/interpreter?data=way[%27building%27](around:" + std::to_string(rad) + "," + std::to_string(lat) + "," + std::to_string(lon) + ");%20(._;%3E;);out;";
 			
-			//std::string url = "overpass-api.de/api/interpreter?data=way[%27building%27](around:" + std::to_string(rad) + "," + std::to_string(lat) + "," + std::to_string(lon) + ");%20(._;%3E;);out;";
+			std::string url = "overpass-api.de/api/interpreter?data=way[%27building%27](around:" + std::to_string(rad) + "," + std::to_string(lat) + "," + std::to_string(lon) + ");%20(._;%3E;);out;";
 	        //std::string url = "https://fleet.ls.hereapi.com/1/search/proximity.json?key_attributes=BUILDING_ID&proximity=" + std::to_string(lat) + "," + std::to_string(lon) + "," + std::to_string(rad) + "&layer_ids=BUILDING&apiKey=C0LqxwuV0lzyiXA6WKEB84h8f8AHK4EMLum1cGGIGI8";
 	        std::cout << url << std::endl;
 	        curlpp::Cleanup cleaner;
