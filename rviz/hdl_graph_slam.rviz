@@ -83,22 +83,6 @@ Visualization Manager:
           Value: true
         keyframe:
           Value: true
-        local_104473971:
-          Value: true
-        local_104474006:
-          Value: true
-        local_104474029:
-          Value: true
-        local_104492674:
-          Value: true
-        local_104492686:
-          Value: true
-        local_105011776:
-          Value: true
-        local_105543136:
-          Value: true
-        local_128567861:
-          Value: true
         map:
           Value: true
         odom:
@@ -112,22 +96,6 @@ Visualization Manager:
       Show Names: true
       Tree:
         map:
-          local_104473971:
-            {}
-          local_104474006:
-            {}
-          local_104474029:
-            {}
-          local_104492674:
-            {}
-          local_104492686:
-            {}
-          local_105011776:
-            {}
-          local_105543136:
-            {}
-          local_128567861:
-            {}
           odom:
             base_link:
               imu_link:
@@ -285,7 +253,7 @@ Visualization Manager:
       Axis: Z
       Channel Name: intensity
       Class: rviz/PointCloud2
-      Color: 25; 255; 25
+      Color: 255; 255; 0
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: true
@@ -315,7 +283,7 @@ Visualization Manager:
       Axis: Z
       Channel Name: intensity
       Class: rviz/PointCloud2
-      Color: 255; 25; 25
+      Color: 0; 191; 255
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: true
@@ -471,11 +439,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 10.332184791564941
+      Scale: 8.425287246704102
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: -0.5172016620635986
-      Y: 4.823439121246338
+      X: 37.06093978881836
+      Y: 41.58058166503906
     Saved: ~
 Window Geometry:
   Displays:
