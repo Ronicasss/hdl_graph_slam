@@ -905,7 +905,7 @@ private:
     }
 
     //std::cout << "keyframe_updated: " << keyframe_updated << std::endl;
-    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue() & update_buildings_nodes()) {
+    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue() & !update_buildings_nodes()) {
       //std::cout << "no opt!" << std::endl;
       return;
     }
@@ -965,22 +965,22 @@ private:
     tf::quaternionTFToEigen(transform_t.getRotation(), q);
     Eigen::Vector3d v;
     tf::vectorTFToEigen (transform_t.getOrigin(), v);
-    Eigen::Matrix3d rot = q.normalized().toRotationMatrix();
-    //std::cout << "base_link -> camera_gray_left trans: " << v << std::endl;
-    //std::cout << "base_link -> camera_gray_left rot: " << rot << std::endl;
 
     Eigen::Isometry3d estimate = keyframes[0]->node->estimate();
     Eigen::Isometry3d base_camera = Eigen::Isometry3d::Identity();
     base_camera.linear() = q.normalized().toRotationMatrix();
-    base_camera.translation() = -v;
-    Eigen::Isometry3d tr = estimate*base_camera;
     std::cout << "estimate: " << estimate.matrix() << std::endl;
-    std::cout << "base_camera: " << base_camera.matrix() << std::endl;
-    std::cout << "tr isometry: " << tr.matrix() << std::endl;
-    /*std::cout << "estimate trans: " << estimate.translation() << std::endl;
-    std::cout << "estimate rot: " << estimate.linear() << std::endl;
-    std::cout << "base_camera trans: " << base_camera.translation() << std::endl;
-    std::cout << "base_camera rot: " << base_camera.linear() << std::endl;*/ 
+    std::cout << "base camera: " << base_camera.matrix() << std::endl;
+    
+    Eigen::Isometry3d guess = Eigen::Isometry3d::Identity();
+    Eigen::Quaterniond orientation = *(keyframes[0]->orientation);
+    orientation.normalize();
+    Eigen::Matrix3d R = (orientation).toRotationMatrix();
+    guess.translation() = *(keyframes[0]->utm_coord);
+    guess.linear() = R;
+    std::cout << "guesss: " << guess.matrix() << std::endl;
+
+    Eigen::Isometry3d tr = guess*base_camera;
 
     Matrix tr_m = Matrix::eye(4);
     tr_m.val[0][0] = tr.linear()(0,0); 
@@ -995,17 +995,18 @@ private:
     tr_m.val[2][1] = tr.linear()(2,1); 
     tr_m.val[2][2] = tr.linear()(2,2); 
     tr_m.val[2][3] = tr.translation()(2);
-    std::cout << "tr_m: " << tr_m << std::endl;
+    //std::cout << "tr_m: " << tr_m << std::endl;
 
     /*******************DO NOT CANCEL******************************************************/
     // delta transforms gt to keyframes, used for visualization
     Matrix delta = Matrix::eye(4);
-    delta = tr_m*Matrix::inv(gt[0]);
-    std::cout << "delta: " << delta << std::endl;
+    delta = tr_m * Matrix::inv(gt[0]);
+    //std::cout << "delta: " << delta << std::endl;
     
     // delta2 transforms keyframes to gt, used for error calculation
     Matrix delta_2 = Matrix::eye(4);
     delta_2 = gt[0] * Matrix::inv(tr_m);
+    //std::cout << "delta_2: " << delta_2 << std::endl;
     
     std::ofstream myfile5;
     myfile5.open("align.txt");
@@ -1033,6 +1034,7 @@ private:
 
     for(int i = 0; i < gt.size(); i++) {
       geometry_msgs::Point p;
+
       p.x = (delta*gt[i]).val[0][3];
       p.y = (delta*gt[i]).val[1][3];
       p.z = (delta*gt[i]).val[2][3];
