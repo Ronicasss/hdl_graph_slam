@@ -84,7 +84,7 @@ GraphSLAM::~GraphSLAM() {
 void GraphSLAM::set_solver(const std::string& solver_type) {
   g2o::SparseOptimizer* graph = dynamic_cast<g2o::SparseOptimizer*>(this->graph.get());
 
-  g2o::ParameterSE3Offset* offset = new g2o::ParameterSE3Offset();
+  g2o::ParameterSE3Offset* offset = new g2o::ParameterSE3Offset;
   offset->setId(0);
   graph->addParameter(offset);
 

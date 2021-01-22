@@ -23,6 +23,7 @@ find_package(catkin REQUIRED COMPONENTS
   ndt_omp
   fast_gicp
   tf_conversions
+  eigen_conversions
 )
 catkin_python_setup()
 

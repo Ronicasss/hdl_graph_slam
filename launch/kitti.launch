@@ -14,7 +14,7 @@
   <!--<node pkg="tf" type="static_transform_publisher" name="lidar2base_publisher" args="0 0 0 0 0 0 base_link velodyne 10" />-->
 
   <!-- in case you use velodyne_driver, comment out the following line -->
-  <node pkg="nodelet" type="nodelet" name="$(arg nodelet_manager)" args="manager" output="screen"/>
+  <node pkg="nodelet" type="nodelet" name="$(arg nodelet_manager)" args="manager" output="screen" />
 
   <!-- prefiltering_nodelet -->
   <node pkg="nodelet" type="nodelet" name="prefiltering_nodelet" args="load hdl_graph_slam/PrefilteringNodelet $(arg nodelet_manager)">
@@ -77,6 +77,8 @@
     <remap from="/gps/navsat" to="$(arg gps_topic)" />
     <remap from="/gpsimu_driver/imu_data" to="$(arg imu_topic)" />
 
+    <param name="gt_path" value="/home/veronica/Desktop/Thesis/07.txt" />
+
     <param name="points_topic" value="$(arg points_topic)" />
     <param name="lidar_range" value="20" />
     <param name="ground_floor_max_thresh" value="1" />
@@ -89,10 +91,10 @@
     <param name="transformation_epsilon" value="0.01" />
     <param name="maximum_iterations" value="64" />
     <param name="use_reciprocal_correspondences" value="false" />
-    <param name="gicp_correspondence_randomness" value="25" />
+    <param name="gicp_correspondence_randomness" value="20" />
     <param name="gicp_max_optimizer_iterations" value="20" />
 
-    <param name="gicp_max_correspondance_distance" value="2" />
+    <param name="gicp_max_correspondance_distance" value="2.5" />
     <param name="gicp_euclidean_fitness_epsilon" value="-1.79e308" />
     <param name="gicp_ransac_outlier_threshold" value="0.05" />
 
@@ -113,7 +115,7 @@
     <param name="b_max_stddev_x" value="3" />
     <param name="b_min_stddev_q" value="0.05" />
     <param name="b_max_stddev_q" value="0.2" />
-    <param name="b_fitness_score_thresh" value="2.5" />
+    <param name="b_fitness_score_thresh" value="2" />
 
     <param name="points_topic" value="$(arg points_topic)" />
     <!-- frame settings -->
