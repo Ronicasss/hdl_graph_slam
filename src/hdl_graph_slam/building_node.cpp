@@ -1,7 +1,7 @@
 #include "hdl_graph_slam/building_node.hpp"
 
 namespace hdl_graph_slam {
-	BuildingNode::BuildingNode() { referenceSystem = pcl::PointCloud<pt3>::Ptr(new pcl::PointCloud<pt3>);}
+	BuildingNode::BuildingNode() { referenceSystem = pcl::PointCloud<pt3>::Ptr(new pcl::PointCloud<pt3>); node = nullptr; }
 
 	// this method refers all points of the building pc to local_origin
 	void BuildingNode::setReferenceSystem() {

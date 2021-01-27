@@ -103,7 +103,7 @@
     <param name="enable_use_reciprocal_correspondences" value="true" />
     <param name="enable_gicp_correspondence_randomness" value="true" />
     <param name="enable_gicp_max_optimizer_iterations" value="true" />
-    <param name="enable_gicp_max_correspondance_distance" value="true" />
+    <param name="enable_gicp_max_correspondance_distance" value="false" />
     <param name="enable_gicp_euclidean_fitness_epsilon" value="false" />
     <param name="enable_gicp_ransac_outlier_threshold" value="false" />
 

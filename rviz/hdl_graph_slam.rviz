@@ -36,7 +36,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: PointCloud2
   - Class: rviz/Selection
     Name: Selection
 Preferences:
@@ -79,6 +79,20 @@ Visualization Manager:
           Value: true
         camera_gray_right:
           Value: true
+        ciao0:
+          Value: true
+        ciao1:
+          Value: true
+        ciao2:
+          Value: true
+        ciao3:
+          Value: true
+        ciao4:
+          Value: true
+        ciao5:
+          Value: true
+        ciao6:
+          Value: true
         imu_link:
           Value: true
         keyframe:
@@ -98,6 +112,20 @@ Visualization Manager:
         map:
           odom:
             base_link:
+              ciao0:
+                {}
+              ciao1:
+                {}
+              ciao2:
+                {}
+              ciao3:
+                {}
+              ciao4:
+                {}
+              ciao5:
+                {}
+              ciao6:
+                {}
               imu_link:
                 camera_color_left:
                   {}
@@ -239,6 +267,7 @@ Visualization Manager:
       Name: MarkerArray
       Namespaces:
         edges: true
+        imu: true
         loop_close_radius: false
         nodes: true
       Queue Size: 100
@@ -438,11 +467,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 12.556058883666992
+      Scale: 12.021410942077637
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 1.707848310470581
-      Y: 3.879847764968872
+      X: 4.1767754554748535
+      Y: 1.0127050876617432
     Saved: ~
 Window Geometry:
   Displays:
