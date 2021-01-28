@@ -110,7 +110,7 @@
     <param name="building_edge_stddev_xy" value="0.25" />
     <param name="building_edge_stddev_z" value="0.25" />
     <param name="building_edge_stddev_q" value="1" />
-    <param name="b_var_gain_a" value="0.25" />
+    <param name="b_var_gain_a" value="20" />
     <param name="b_min_stddev_x" value="0.1" />
     <param name="b_max_stddev_x" value="3" />
     <param name="b_min_stddev_q" value="0.05" />
