@@ -1080,8 +1080,8 @@ private:
     int j = 0;
     Matrix prev_pose = Matrix::eye(4);
     Matrix prev_gt = Matrix::eye(4);
-    std::vector<Eigen::Vector3d> rpe_poses;
-    std::vector<Eigen::Vector3d> rpe_gt;
+    std::vector<Matrix> rpe_poses;
+    std::vector<Matrix> rpe_gt;
 
     for(int i = 0; i < gt.size(); i++) {
       int index = isIndexFromKeyframe(i);
@@ -1132,23 +1132,42 @@ private:
     float t_mean = sum/(j);
     float t_variance = sqrt((sum_sq/(j))-(t_mean*t_mean));
 
+    std::cout << "ate t_mean: " << t_mean << std::endl;
+    std::cout << "ate t_variance: " << t_variance << std::endl;
+
     myfile4 << t_mean << " " << t_variance << std::endl;
 
     // rpe
     double t_rpe_sum = 0.0;
     double r_rpe_sum = 0.0;
     for(int i = 0; i < rpe_poses.size(); i++) {
-      std::cout << "rpe gt " << i << ": " << rpe_gt[i] << std::endl;
-      std::cout << "rpe pose " << i << ": " << rpe_poses[i] << std::endl;
-      Eigen::Vector3d temp = computeRelativeTrans(rpe_gt[i], rpe_poses[i]);
-      std::cout << "temp " << i << ": " << temp << std::endl;
-      t_rpe_sum += (temp(0)*temp(0))+(temp(1)*temp(1));
-      r_rpe_sum += temp(2)*temp(2);
+      //std::cout << "rpe gt " << i << ": " << rpe_gt[i] << std::endl;
+      //std::cout << "rpe pose " << i << ": " << rpe_poses[i] << std::endl;
+      Matrix delta = computeRelativeTrans(rpe_gt[i], rpe_poses[i]);
+      //std::cout << "delta gt - pos " << i << ": " << delta << std::endl;
+
+      double t = sqrt((delta.val[0][3]*delta.val[0][3])+(delta.val[1][3]*delta.val[1][3])+(delta.val[2][3]*delta.val[2][3]));
+      double temp = (((delta.val[0][0] + delta.val[1][1] + delta.val[2][2])-1)/2);
+      //std::cout << "temp prima: " << temp << std::endl; 
+      if(temp > 1.0)
+        temp = 1.0;
+      if(temp < -1.0)
+        temp = -1.0;
+      //std::cout << "temp dopo: " << temp << std::endl; 
+      double angle = std::acos(temp); 
+      /*std::cout << "t: " << t << std::endl;
+      std::cout << "angle: " << angle << std::endl;*/   
+
+      t_rpe_sum += t*t;
+      r_rpe_sum += angle*angle;
     }
 
     if(rpe_poses.size() > 0) {
-      double t_rpe = t_rpe_sum/(rpe_poses.size());
-      double r_rpe = r_rpe_sum/(rpe_poses.size());
+      double t_rpe = sqrt(t_rpe_sum/(rpe_poses.size()));
+      //std::cout << "r rpe sum: " << r_rpe_sum << std::endl;
+      //std::cout << "t rpe sum: " << t_rpe_sum << std::endl;
+      //std::cout << "size: " << rpe_poses.size() << std::endl;
+      double r_rpe = sqrt(r_rpe_sum/(rpe_poses.size()));
 
       std::cout << "t_rpe: " << t_rpe << std::endl;
       std::cout << "r_rpe: " << r_rpe << std::endl;
@@ -1167,48 +1186,15 @@ private:
 
   }
 
-  Eigen::Vector3d computeRelativeTrans(Eigen::Isometry3d pose1, Eigen::Isometry3d pose2) {
-    Eigen::Vector3d p1 = Eigen::Vector3d::Identity();
-    Eigen::Vector3d p2 = Eigen::Vector3d::Identity();
-    p1.block<2, 1>(0, 0) = pose1.translation().block<2, 1>(0, 0);
-    p2.block<2, 1>(0, 0) = pose2.translation().block<2, 1>(0, 0);
-
-    Eigen::Matrix<double, 3, 1> rpy1 = pose1.linear().eulerAngles(0,1,2);
-    p1(2) = rpy1(2);
-    Eigen::Matrix<double, 3, 1> rpy2 = pose2.linear().eulerAngles(0,1,2);
-    p2(2) = rpy2(2);
-
-    double xij = - (cos(p1(2))*p1(0)) - (sin(p1(2))*p1(1)) + p2(0);
-    double yij = (sin(p1(2))*p1(0)) - (cos(p1(2))*p1(1)) + p2(1);
-    double thetaij = std::fmod((- p1(2) + p2(2)), (2*M_PI));
-    Eigen::Vector3d temp(xij, yij, thetaij);
-    return temp;
-  }
-
-  Eigen::Vector3d computeRelativeTrans(Eigen::Vector3d p1, Eigen::Vector3d p2) {
-    double xij = - (cos(p1(2))*p1(0)) - (sin(p1(2))*p1(1)) + p2(0);
-    double yij = (sin(p1(2))*p1(0)) - (cos(p1(2))*p1(1)) + p2(1);
-    double thetaij = std::fmod((- p1(2) + p2(2)), (2*M_PI));
-    Eigen::Vector3d temp(xij, yij, thetaij);
-    return temp;
-  }
-
-  Eigen::Vector3d computeRelativeTrans(Matrix pose1, Matrix pose2) {
-    Eigen::Vector3d p1 = Eigen::Vector3d::Identity();
-    Eigen::Vector3d p2 = Eigen::Vector3d::Identity();
-    p1(0) = pose1.val[0][3];
-    p1(1) = pose1.val[1][3];
-    p2(0) = pose2.val[0][3];
-    p2(1) = pose2.val[1][3];
-
-    p1(2) = atan2(pose1.val[1][0], pose1.val[0][0]);
-    p2(2) = atan2(pose2.val[1][0], pose2.val[0][0]);
-
-    double xij = - (cos(p1(2))*p1(0)) - (sin(p1(2))*p1(1)) + p2(0);
-    double yij = (sin(p1(2))*p1(0)) - (cos(p1(2))*p1(1)) + p2(1);
-    double thetaij = std::fmod((- p1(2) + p2(2)), (2*M_PI));
-    Eigen::Vector3d temp(xij, yij, thetaij);
-    return temp;
+  Matrix computeRelativeTrans(Matrix pose1, Matrix pose2) {
+    //std::cout << "inizio" << std::endl;
+   
+    //std::cout << "pose 1: " << pose1 << std::endl;
+    //std::cout << "pose 2: " << pose2 << std::endl;
+    Matrix delta = Matrix::inv(pose1)*pose2;
+    //std::cout << "delta: " << delta << std::endl;
+    //std::cout << "fine" << std::endl;
+    return delta;
   }
 
   int isIndexFromKeyframe(int index) {
