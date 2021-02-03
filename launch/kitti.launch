@@ -77,7 +77,7 @@
     <remap from="/gps/navsat" to="$(arg gps_topic)" />
     <remap from="/gpsimu_driver/imu_data" to="$(arg imu_topic)" />
 
-    <param name="gt_path" value="/home/veronica/Desktop/Thesis/00.txt" />
+    <param name="gt_path" value="/home/veronica/Desktop/Thesis/07.txt" />
 
     <param name="points_topic" value="$(arg points_topic)" />
     <param name="lidar_range" value="20" />
@@ -97,6 +97,11 @@
     <param name="gicp_max_correspondance_distance" value="1" />
     <param name="gicp_euclidean_fitness_epsilon" value="-1.79e308" />
     <param name="gicp_ransac_outlier_threshold" value="0.05" />
+    <param name="gicp_reg_resolution" value="1.0" />
+    <param name="gicp_reg_num_threads" value="0" />
+
+    <param name="gicp_initial_reg_resolution" value="2.5" />
+    <param name="gicp_init_res_kf_thresh" value="35" />
 
     <param name="enable_transformation_epsilon" value="true" />
     <param name="enable_maximum_iterations" value="true" />

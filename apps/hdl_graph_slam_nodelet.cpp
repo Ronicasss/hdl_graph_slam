@@ -555,7 +555,7 @@ private:
 
       // if the keyframe is never been aligned with map and there is a gps, then enter
       if((keyframe->buildings_nodes).empty() && keyframe->utm_coord && enter) { 
-        std::cout << "update_buildings_nodes - get new buildings " << ii << std::endl;
+        std::cout << "update_buildings_nodes - get new buildings " << keyframe->index << std::endl;
         //enter = 0;
         
         geodesy::UTMPoint utm;
@@ -726,8 +726,12 @@ private:
 
           std::cout << "registration: FAST_VGICP" << std::endl;
           boost::shared_ptr<fast_gicp::FastVGICP<pcl::PointXYZ, pcl::PointXYZ>> gicp(new fast_gicp::FastVGICP<pcl::PointXYZ, pcl::PointXYZ>());
-          gicp->setNumThreads(private_nh.param<int>("reg_num_threads", 0));
-          gicp->setResolution(private_nh.param<double>("reg_resolution", 1.0));
+          gicp->setNumThreads(private_nh.param<int>("gicp_reg_num_threads", 0));
+          if(keyframe->index >= (private_nh.param<int>("gicp_init_res_kf_thresh", 35)))
+            gicp->setResolution(private_nh.param<double>("gicp_reg_resolution", 1.0));
+          else
+            gicp->setResolution(private_nh.param<double>("gicp_initial_reg_resolution", 2.0));
+
           
           //std::cout << "registration: FAST_GICP" << std::endl;
           //boost::shared_ptr<fast_gicp::FastGICP<pcl::PointXYZ, pcl::PointXYZ>> gicp(new fast_gicp::FastGICP<pcl::PointXYZ, pcl::PointXYZ>());
@@ -771,6 +775,7 @@ private:
 
           // publish icp resulting transform
           aligned->header.frame_id = "map";
+          
           transformed_pub.publish(aligned);
 
           Eigen::Matrix4d t_s_bs = transformation.cast<double>();
@@ -909,7 +914,7 @@ private:
     }
 
     //std::cout << "keyframe_updated: " << keyframe_updated << std::endl;
-    if(!keyframe_updated & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue() & !update_buildings_nodes()) {
+    if(!keyframe_updated  & !flush_floor_queue() & !flush_gps_queue() & !flush_imu_queue() & !update_buildings_nodes()) {
       //std::cout << "no opt!" << std::endl;
       return;
     }
@@ -981,17 +986,11 @@ private:
       index = 0;
 
     Eigen::Isometry3d estimate = Eigen::Isometry3d::Identity();
-    //estimate = keyframes[index]->node->estimate();
-    
-    trans_odom2map_mutex.lock();
-    Eigen::Isometry3d odom2map(trans_odom2map.cast<double>());
-    trans_odom2map_mutex.unlock();
-    estimate = odom2map;
-    estimate.translation() = Eigen::Vector3d::Zero();
+    estimate = keyframes[index]->node->estimate();
    
-
     Eigen::Isometry3d base_camera = Eigen::Isometry3d::Identity();
     base_camera.linear() = q.normalized().toRotationMatrix();
+    //base_camera.translation() = v;
     //std::cout << "estimate: " << estimate.matrix() << std::endl;
     //std::cout << "base camera: " << base_camera.matrix() << std::endl;
 
@@ -1015,12 +1014,12 @@ private:
     /*******************DO NOT CANCEL******************************************************/
     // delta transforms gt to keyframes, used for visualization
     Matrix delta = Matrix::eye(4);
-    delta = tr_m * Matrix::inv(gt[0]);
+    delta = tr_m * Matrix::inv(gt[index]);
     //std::cout << "delta: " << delta << std::endl;
     
     // delta2 transforms keyframes to gt, used for error calculation
     Matrix delta_2 = Matrix::eye(4);
-    delta_2 = gt[0] * Matrix::inv(tr_m);
+    delta_2 = gt[index] * Matrix::inv(tr_m);
     //std::cout << "delta_2: " << delta_2 << std::endl;
     
     std::ofstream myfile5;
@@ -1029,12 +1028,21 @@ private:
     myfile5 << delta_2.val[0][0] << " " << delta_2.val[0][1] << " " << delta_2.val[0][2] << " " << delta_2.val[0][3] << " " << delta_2.val[1][0] << " " << delta_2.val[1][1] << " " << delta_2.val[1][2] << " " << delta_2.val[1][3] << " " << delta_2.val[2][0] << " " << delta_2.val[2][1] << " " << delta_2.val[2][2] << " " << delta_2.val[2][3] << "\n";
     myfile5.close();
 
-    //std::vector<Matrix> deltas = loadPoses("align.txt");
-    //std::cout << "read delta: " << deltas[0] << std::endl; 
-    //std::cout << "read delta_2: " << deltas[1] << std::endl; 
-    //Matrix delta = deltas[0];
-    //Matrix delta_2 = deltas[1];
+    /*std::vector<Matrix> deltas = loadPoses("align.txt");
+    std::cout << "read delta: " << deltas[0] << std::endl; 
+    std::cout << "read delta_2: " << deltas[1] << std::endl; 
+    Matrix delta = deltas[0];
+    Matrix delta_2 = deltas[1];*/
     /****************************************************************************************/
+
+    /*Eigen::Isometry3d first_estimate = keyframes[index]->node->estimate();
+    Eigen::Isometry3d first_gt = MatrixToIsometry(gt[0]);
+    Eigen::Matrix3d R = first_gt.linear() * first_estimate.linear().transpose();
+    Eigen::Vector3d t = first_gt.translation() - R * first_estimate.translation();
+    Eigen::Isometry3d tt = first_estimate * base_camera * first_gt.inverse();
+    //tt.linear() = R;
+    //tt.translation() = t;
+    Matrix tt_m = IsometryToMatrix(tt);*/
     
     visualization_msgs::Marker gt_traj_marker;
     gt_traj_marker.header.frame_id = "map";
@@ -1046,13 +1054,14 @@ private:
 
     gt_traj_marker.pose.orientation.w = 1.0;
     gt_traj_marker.scale.x = gt_traj_marker.scale.y = gt_traj_marker.scale.z = 0.5;
+    //delta = tt_m;
 
     for(int i = 0; i < gt.size(); i++) {
       geometry_msgs::Point p;
 
-      p.x = (delta*gt[i]).val[0][3];
-      p.y = (delta*gt[i]).val[1][3];
-      p.z = (delta*gt[i]).val[2][3];
+      p.x = (delta * gt[i]).val[0][3];
+      p.y = (delta * gt[i]).val[1][3];
+      p.z = (delta * gt[i]).val[2][3];
       gt_traj_marker.points.push_back(p);
       std_msgs::ColorRGBA c;
       c.r = 1.0;
@@ -1184,6 +1193,40 @@ private:
 
     /****************************************************************************************/
 
+  }
+
+  Matrix IsometryToMatrix(Eigen::Isometry3d iso) {
+    Matrix m = Matrix::eye(4);
+    m.val[0][0] = iso.linear()(0,0); 
+    m.val[0][1] = iso.linear()(0,1);
+    m.val[0][2] = iso.linear()(0,2);
+    m.val[0][3] = iso.translation()(0);
+    m.val[1][0] = iso.linear()(1,0);
+    m.val[1][1] = iso.linear()(1,1);
+    m.val[1][2] = iso.linear()(1,2);
+    m.val[1][3] = iso.translation()(1); 
+    m.val[2][0] = iso.linear()(2,0); 
+    m.val[2][1] = iso.linear()(2,1); 
+    m.val[2][2] = iso.linear()(2,2); 
+    m.val[2][3] = iso.translation()(2);
+    return m;
+  }
+
+  Eigen::Isometry3d MatrixToIsometry(Matrix m) {
+    Eigen::Isometry3d iso = Eigen::Isometry3d::Identity();
+    iso.linear()(0,0) = m.val[0][0]; 
+    iso.linear()(0,1) = m.val[0][1];
+    iso.linear()(0,2) = m.val[0][2];
+    iso.translation()(0) = m.val[0][3];
+    iso.linear()(1,0) = m.val[1][0];
+    iso.linear()(1,1) = m.val[1][1];
+    iso.linear()(1,2) = m.val[1][2];
+    iso.translation()(1) = m.val[1][3];
+    iso.linear()(2,0) = m.val[2][0];
+    iso.linear()(2,1) = m.val[2][1];
+    iso.linear()(2,2) = m.val[2][2];
+    iso.translation()(2) = m.val[2][3];
+    return iso;
   }
 
   Matrix computeRelativeTrans(Matrix pose1, Matrix pose2) {
