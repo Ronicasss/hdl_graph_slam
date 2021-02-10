@@ -61,7 +61,6 @@
 
 #include "hdl_graph_slam/building_tools.hpp"
 #include "hdl_graph_slam/building_node.hpp"
-#include "hdl_graph_slam/matrix.h"
 #include <pclomp/gicp_omp.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/passthrough.h>
@@ -116,8 +115,6 @@ public:
     gt_markers_pub = mt_nh.advertise<visualization_msgs::Marker>("/hdl_graph_slam/gt_markers", 16);
     first_guess = true;
     prev_guess = Eigen::Matrix4f::Identity();
-    
-    b_tf_pub = mt_nh.advertise<geometry_msgs::TransformStamped>("/hdl_graph_slam/b_tf", 16);
 
     //
     anchor_node = nullptr;
@@ -373,20 +370,21 @@ private:
       keyframe->utm_zone = utm.zone;
       keyframe->utm_band = utm.band;
 
-      
-      g2o::OptimizableGraph::Edge* edge;
-      if(std::isnan(xyz.z())) {
-        Eigen::Matrix2d information_matrix = Eigen::Matrix2d::Identity() / gps_edge_stddev_xy;
-        edge = graph_slam->add_se3_prior_xy_edge(keyframe->node, xyz.head<2>(), information_matrix);
-      } else {
-        Eigen::Matrix3d information_matrix = Eigen::Matrix3d::Identity();
-        information_matrix.block<2, 2>(0, 0) /= gps_edge_stddev_xy;
-        information_matrix(2, 2) /= gps_edge_stddev_z;
-        edge = graph_slam->add_se3_prior_xyz_edge(keyframe->node, xyz, information_matrix);
+      if(private_nh.param<bool>("test_enable_gps_imu", true)) {
+        g2o::OptimizableGraph::Edge* edge;
+        if(std::isnan(xyz.z())) {
+          Eigen::Matrix2d information_matrix = Eigen::Matrix2d::Identity() / gps_edge_stddev_xy;
+          edge = graph_slam->add_se3_prior_xy_edge(keyframe->node, xyz.head<2>(), information_matrix);
+        } else {
+          Eigen::Matrix3d information_matrix = Eigen::Matrix3d::Identity();
+          information_matrix.block<2, 2>(0, 0) /= gps_edge_stddev_xy;
+          information_matrix(2, 2) /= gps_edge_stddev_z;
+          edge = graph_slam->add_se3_prior_xyz_edge(keyframe->node, xyz, information_matrix);
+        }
+        graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("gps_edge_robust_kernel", "NONE"), private_nh.param<double>("gps_edge_robust_kernel_size", 1.0));
+        
+        updated = true; 
       }
-      graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("gps_edge_robust_kernel", "NONE"), private_nh.param<double>("gps_edge_robust_kernel_size", 1.0));
-      
-      updated = true;
     }
 
     auto remove_loc = std::upper_bound(gps_queue.begin(), gps_queue.end(), keyframes.back()->stamp, [=](const ros::Time& stamp, const geographic_msgs::GeoPointStampedConstPtr& geopoint) { return stamp < geopoint->header.stamp; });
@@ -467,19 +465,21 @@ private:
         keyframe->orientation->coeffs() = -keyframe->orientation->coeffs();
       }
       
-      if(enable_imu_orientation) {
-        Eigen::MatrixXd info = Eigen::MatrixXd::Identity(3, 3) / imu_orientation_edge_stddev;
-        auto edge = graph_slam->add_se3_prior_quat_edge(keyframe->node, *keyframe->orientation, info);
-        graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("imu_orientation_edge_robust_kernel", "NONE"), private_nh.param<double>("imu_orientation_edge_robust_kernel_size", 1.0));
-      }
+      if(private_nh.param<bool>("test_enable_gps_imu", true)) {
+        if(enable_imu_orientation) {
+          Eigen::MatrixXd info = Eigen::MatrixXd::Identity(3, 3) / imu_orientation_edge_stddev;
+          auto edge = graph_slam->add_se3_prior_quat_edge(keyframe->node, *keyframe->orientation, info);
+          graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("imu_orientation_edge_robust_kernel", "NONE"), private_nh.param<double>("imu_orientation_edge_robust_kernel_size", 1.0));
+        }
 
-      if(enable_imu_acceleration) {
-        Eigen::MatrixXd info = Eigen::MatrixXd::Identity(3, 3) / imu_acceleration_edge_stddev;
-        g2o::OptimizableGraph::Edge* edge = graph_slam->add_se3_prior_vec_edge(keyframe->node, -Eigen::Vector3d::UnitZ(), *keyframe->acceleration, info);
-        graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("imu_acceleration_edge_robust_kernel", "NONE"), private_nh.param<double>("imu_acceleration_edge_robust_kernel_size", 1.0));
+        if(enable_imu_acceleration) {
+          Eigen::MatrixXd info = Eigen::MatrixXd::Identity(3, 3) / imu_acceleration_edge_stddev;
+          g2o::OptimizableGraph::Edge* edge = graph_slam->add_se3_prior_vec_edge(keyframe->node, -Eigen::Vector3d::UnitZ(), *keyframe->acceleration, info);
+          graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("imu_acceleration_edge_robust_kernel", "NONE"), private_nh.param<double>("imu_acceleration_edge_robust_kernel_size", 1.0));
+        }
+        
+        updated = true;
       }
-      
-      updated = true;
     }
 
     auto remove_loc = std::upper_bound(imu_queue.begin(), imu_queue.end(), keyframes.back()->stamp, [=](const ros::Time& stamp, const sensor_msgs::ImuConstPtr& imu) { return stamp < imu->header.stamp; });
@@ -552,21 +552,37 @@ private:
     bool b_updated = false;
     for(auto& keyframe : keyframes) {
       //std::cout << "id: " << keyframe->id() << " est: " << keyframe->node->estimate().translation() << std::endl;
-
-      // if the keyframe is never been aligned with map and there is a gps, then enter
-      if((keyframe->buildings_nodes).empty() && keyframe->utm_coord && enter) { 
-        std::cout << "update_buildings_nodes - get new buildings " << keyframe->index << std::endl;
+      // if the keyframe is never been aligned with map
+      if(enter && !keyframe->buildings_check && keyframe->index != 0) {
+        if(first_guess && !keyframe->utm_coord) {
+          continue; 
+        }
+        keyframe->buildings_check = true;
         //enter = 0;
         
+        Eigen::Vector3d e_utm_coord = Eigen::Vector3d::Identity();
+        int zone = 0;
+        char band;
+        if(!first_guess) {
+          std::cout << "using est" << std::endl; 
+          e_utm_coord = keyframe->node->estimate().translation(); 
+          zone = zero_utm_zone;
+          band = zero_utm_band;
+        } else {
+          std::cout << "first guess" << std::endl; 
+          e_utm_coord = (*keyframe->utm_coord);
+          zone = *keyframe->utm_zone;
+          band = *keyframe->utm_band;
+        }
+       
+        Eigen::Vector3d e_zero_utm = (*zero_utm);
         geodesy::UTMPoint utm;
-        Eigen::Vector3d e_utm_coord = keyframe->utm_coord.get();
-        Eigen::Vector3d e_zero_utm = zero_utm.get();
         // e_utm_coord are the coords of current keyframe wrt zero_utm, so to get real coords we add zero_utm
         utm.easting = e_utm_coord(0) + e_zero_utm(0);
         utm.northing = e_utm_coord(1) + e_zero_utm(1);
         utm.altitude = e_utm_coord(2) + e_zero_utm(2);
-        utm.zone = keyframe->utm_zone.get();
-        utm.band = keyframe->utm_band.get();
+        utm.zone = zone;
+        utm.band = band;
         geographic_msgs::GeoPoint lla = geodesy::toMsg(utm); // convert from utm to lla
 
         // download and parse buildings
@@ -574,15 +590,11 @@ private:
         if(new_buildings.size() > 0) {
           std::cout << "We found buildings!" << std::endl;
           b_updated = true;
-          //e_zero_utm(2) = 0;
-          //e_utm_coord(2) = 0;
  
-          std::vector<BuildingNode::Ptr> bnodes; // vector containing all buildings nodes (new and not new)
+          std::vector<BuildingNode::Ptr> bnodes; // vector containing all buildings nodes for current kf (new and not new)
           // buildingsCloud is the cloud containing all buildings
           pcl::PointCloud<pcl::PointXYZ>::Ptr buildingsCloud(new pcl::PointCloud<pcl::PointXYZ>);
-
-          bool first_b = first_guess;
-
+          bool first_b = first_guess; // used to fix first building node
 
           // construct building nodes
           for(auto it2 = new_buildings.begin(); it2 != new_buildings.end(); it2++)
@@ -604,16 +616,11 @@ private:
               Eigen::Isometry3d A;
               A.linear() = R;
               A.translation() = T;
-              // set global_origin
-              bt->global_origin = A;
               // set the node
               bt->node = graph_slam->add_se3_node(A); 
               if(first_b) {
                 bt->node->setFixed(true);
                 first_b = false;
-                std::cout << "here" << std::endl;
-              } else {
-                std::cout << "not here" << std::endl;
               }
             
               //std::cout << "id: " << bt->building.id << " est: " << bt->node->estimate().translation() << std::endl;
@@ -631,6 +638,7 @@ private:
           pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_2(new pcl::PointCloud<pcl::PointXYZ>);
           pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_3(new pcl::PointCloud<pcl::PointXYZ>);
           pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_4(new pcl::PointCloud<pcl::PointXYZ>);
+          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_5(new pcl::PointCloud<pcl::PointXYZ>);
           pcl::copyPointCloud(*keyframe->cloud,*temp_cloud); // convert from pointxyzi to pointxyz
 
           //std::cout << "size 1: " << temp_cloud->size() << std::endl; 
@@ -642,7 +650,7 @@ private:
           pass.filter(*temp_cloud_2);
           temp_cloud_2->header = (*keyframe->cloud).header;
           //std::cout << "size 2: " << temp_cloud_2->size() << std::endl;
-          // downsampling + outlier removal
+          // downsampling
           pcl::Filter<pcl::PointXYZ>::Ptr downsample_filter;
           double downsample_resolution = private_nh.param<double>("downsample_resolution", 0.1);
           boost::shared_ptr<pcl::VoxelGrid<pcl::PointXYZ>> voxelgrid(new pcl::VoxelGrid<pcl::PointXYZ>());
@@ -651,19 +659,16 @@ private:
           downsample_filter->setInputCloud(temp_cloud_2);
           downsample_filter->filter(*temp_cloud_3);
           temp_cloud_3->header = temp_cloud_2->header;
-
           //std::cout << "size 3: " << temp_cloud_3->size() << std::endl;
-
+          // outlier removal
           pcl::RadiusOutlierRemoval<pcl::PointXYZ>::Ptr rad(new pcl::RadiusOutlierRemoval<pcl::PointXYZ>());
           rad->setRadiusSearch(radius_search);
           rad->setMinNeighborsInRadius(min_neighbors_in_radius);
           //std::cout << "rad: " << rad->getRadiusSearch() << " neighbors: " << rad->getMinNeighborsInRadius() << std::endl; 
-          pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>());
           rad->setInputCloud(temp_cloud_3);
           rad->filter(*temp_cloud_4);
           temp_cloud_4->header = temp_cloud_3->header;
-
-          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_5(new pcl::PointCloud<pcl::PointXYZ>);
+  
           // project the cloud on plane z=0
           pcl::ProjectInliers<pcl::PointXYZ> proj;
           pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
@@ -710,9 +715,10 @@ private:
             Eigen::Matrix3f R = (orientation.cast<float>()).toRotationMatrix();
             guess.block<3,1>(0,3) = e_utm_coord.cast<float>();
             guess.block<3,3>(0,0) = R;
+            guess = guess * ((keyframe->odom).cast<float>().matrix()).inverse();
             first_guess = false;
           } else {
-            std::cout << "prev" << std::endl;
+            std::cout << "prev guess" << std::endl;
             guess = prev_guess;
           }
           std::cout << "guess: " << guess << std::endl;
@@ -731,7 +737,7 @@ private:
             gicp->setResolution(private_nh.param<double>("gicp_reg_resolution", 1.0));
           else
             gicp->setResolution(private_nh.param<double>("gicp_initial_reg_resolution", 2.0));
-
+          
           
           //std::cout << "registration: FAST_GICP" << std::endl;
           //boost::shared_ptr<fast_gicp::FastGICP<pcl::PointXYZ, pcl::PointXYZ>> gicp(new fast_gicp::FastGICP<pcl::PointXYZ, pcl::PointXYZ>());
@@ -768,18 +774,20 @@ private:
           registration->setInputSource(odomCloud);
           pcl::PointCloud<pcl::PointXYZ>::Ptr aligned(new pcl::PointCloud<pcl::PointXYZ>());
           registration->align(*aligned, guess);
-          std::cout << "has converged:" << registration->hasConverged() << " score: " << registration->getFitnessScore() << std::endl;
+          std::cout << "has converged:" << registration->hasConverged() << " score: " << registration->getFitnessScore(2.0) << std::endl;
           Eigen::Matrix4f transformation = registration->getFinalTransformation();
           std::cout<< "Transformation: " << transformation << std::endl;
           prev_guess = transformation;
 
+          /*if(registration->getFitnessScore(2.0) > private_nh.param<double>("guess_thresh", 0.5)) {
+            first_guess = true;
+          }*/
+
           // publish icp resulting transform
           aligned->header.frame_id = "map";
-          
           transformed_pub.publish(aligned);
 
           Eigen::Matrix4d t_s_bs = transformation.cast<double>();
-          
           Eigen::Isometry3d t_s_bs_iso = Eigen::Isometry3d::Identity();
           t_s_bs_iso.matrix() = t_s_bs;
 
@@ -800,9 +808,14 @@ private:
           //auto edge = graph_slam->add_se3_edge_prior(keyframe->node, t_s_bs_iso*(keyframe->odom), information_matrix);
           //graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
 
-          //geometry_msgs::TransformStamped ts = matrix2transform(keyframe->stamp, (t_s_bs*keyframe->odom.matrix()).cast<float>(), "map", "ref_"+std::to_string(ii));
+          // t_s_bs in map frame
+          //geometry_msgs::TransformStamped ts = matrix2transform(keyframe->stamp, (t_s_bs*keyframe->odom.matrix()).cast<float>(), "map", "kf_"+std::to_string(keyframe->index));
           //b_tf_broadcaster.sendTransform(ts);
 
+          // t_s_bs in kf frame
+          //geometry_msgs::TransformStamped ts4 = matrix2transform(keyframe->stamp, (t_s_bs).cast<float>(), "kf_"+std::to_string(keyframe->index), "t_s_bs"+std::to_string(keyframe->index));
+          //b_tf_broadcaster.sendTransform(ts4);
+          
           // add edges
           for(auto it1 = bnodes.begin(); it1 != bnodes.end(); it1++)
           {
@@ -815,8 +828,13 @@ private:
             Eigen::Isometry3d t_s_b_iso = Eigen::Isometry3d::Identity();
             t_s_b_iso.matrix() = t_s_b;
 
-            //geometry_msgs::TransformStamped ts2 = matrix2transform(keyframe->stamp,  t_bs_b.cast<float>(), "map", "local_"+bntemp->building.id);
+            // buildings tf
+            //geometry_msgs::TransformStamped ts2 = matrix2transform(keyframe->stamp,  t_bs_b.cast<float>(), "map", "b_"+bntemp->building.id);
             //b_tf_broadcaster.sendTransform(ts2);
+
+            // edge tf (from keyframe to building)
+            //geometry_msgs::TransformStamped ts3 = matrix2transform(keyframe->stamp,  t_s_b.inverse().cast<float>(), "kf_"+std::to_string(keyframe->index), "tf_"+bntemp->building.id);
+            //b_tf_broadcaster.sendTransform(ts3);
             
             //auto edge1 = graph_slam->add_se3_edge_prior(keyframe->node, temp1_iso, information_matrix);
             //graph_slam->add_robust_kernel(edge1, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
@@ -846,17 +864,17 @@ private:
     return nullptr;
   }
 
-  std::vector<Matrix> loadPoses(std::string file_name) {
-    std::vector<Matrix> poses;
+  std::vector<Eigen::Matrix4d> loadPoses(std::string file_name) {
+    std::vector<Eigen::Matrix4d> poses;
     FILE *fp = fopen(file_name.c_str(),"r");
     if (!fp)
       return poses;
     while (!feof(fp)) {
-      Matrix P = Matrix::eye(4);
+      Eigen::Matrix4d P = Eigen::Matrix4d::Identity();
       if (fscanf(fp, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-                     &P.val[0][0], &P.val[0][1], &P.val[0][2], &P.val[0][3],
-                     &P.val[1][0], &P.val[1][1], &P.val[1][2], &P.val[1][3],
-                     &P.val[2][0], &P.val[2][1], &P.val[2][2], &P.val[2][3] )==12) {
+                     &P(0,0), &P(0,1), &P(0,2), &P(0,3),
+                     &P(1,0), &P(1,1), &P(1,2), &P(1,3),
+                     &P(2,0), &P(2,1), &P(2,2), &P(2,3) )==12) {
         poses.push_back(P);
       }
     }
@@ -968,289 +986,205 @@ private:
     }
 
     /********************************************************************************************/
+    // errors computation
+    // RPE always computed
+    // ATE computed only if the parameter "enable_ate_calculation" is true (because gt is not always present)
+    std::cout << "starting errors computation" << std::endl;
+    Eigen::IOFormat lineFmt(Eigen::StreamPrecision, Eigen::DontAlignCols, " ", " ", "", "", "", "");
+
     tf::StampedTransform transform_t;
     tf_listener.lookupTransform("base_link", "camera_gray_left", ros::Time(0), transform_t);
     Eigen::Quaterniond q;
     tf::quaternionTFToEigen(transform_t.getRotation(), q);
     Eigen::Vector3d v;
-    tf::vectorTFToEigen (transform_t.getOrigin(), v);
+    tf::vectorTFToEigen(transform_t.getOrigin(), v);
+    Eigen::Matrix4d base_camera = Eigen::Matrix4d::Identity();
+    base_camera.block<3, 3>(0, 0) = q.normalized().toRotationMatrix();
+    //base_camera.block<3, 1>(0, 3) = v;
 
-    int index = -1, k = 0;
-    while(k < keyframes.size()) {
-      index = isIndexFromKeyframe(k);
-      if(index >=0)
-        break;
-      k++;
-    }
-    if(index == -1)
-      index = 0;
-
-    Eigen::Isometry3d estimate = Eigen::Isometry3d::Identity();
-    estimate = keyframes[index]->node->estimate();
-   
-    Eigen::Isometry3d base_camera = Eigen::Isometry3d::Identity();
-    base_camera.linear() = q.normalized().toRotationMatrix();
-    //base_camera.translation() = v;
-    //std::cout << "estimate: " << estimate.matrix() << std::endl;
-    //std::cout << "base camera: " << base_camera.matrix() << std::endl;
-
-    Eigen::Isometry3d tr = estimate*base_camera;
-
-    Matrix tr_m = Matrix::eye(4);
-    tr_m.val[0][0] = tr.linear()(0,0); 
-    tr_m.val[0][1] = tr.linear()(0,1);
-    tr_m.val[0][2] = tr.linear()(0,2);
-    tr_m.val[0][3] = tr.translation()(0);
-    tr_m.val[1][0] = tr.linear()(1,0);
-    tr_m.val[1][1] = tr.linear()(1,1);
-    tr_m.val[1][2] = tr.linear()(1,2);
-    tr_m.val[1][3] = tr.translation()(1); 
-    tr_m.val[2][0] = tr.linear()(2,0); 
-    tr_m.val[2][1] = tr.linear()(2,1); 
-    tr_m.val[2][2] = tr.linear()(2,2); 
-    tr_m.val[2][3] = tr.translation()(2);
-    //std::cout << "tr_m: " << tr_m << std::endl;
-
-    /*******************DO NOT CANCEL******************************************************/
-    // delta transforms gt to keyframes, used for visualization
-    Matrix delta = Matrix::eye(4);
-    delta = tr_m * Matrix::inv(gt[index]);
-    //std::cout << "delta: " << delta << std::endl;
-    
-    // delta2 transforms keyframes to gt, used for error calculation
-    Matrix delta_2 = Matrix::eye(4);
-    delta_2 = gt[index] * Matrix::inv(tr_m);
-    //std::cout << "delta_2: " << delta_2 << std::endl;
-    
-    std::ofstream myfile5;
-    myfile5.open("align.txt");
-    myfile5 << delta.val[0][0] << " " << delta.val[0][1] << " " << delta.val[0][2] << " " << delta.val[0][3] << " " << delta.val[1][0] << " " << delta.val[1][1] << " " << delta.val[1][2] << " " << delta.val[1][3] << " " << delta.val[2][0] << " " << delta.val[2][1] << " " << delta.val[2][2] << " " << delta.val[2][3] << "\n";
-    myfile5 << delta_2.val[0][0] << " " << delta_2.val[0][1] << " " << delta_2.val[0][2] << " " << delta_2.val[0][3] << " " << delta_2.val[1][0] << " " << delta_2.val[1][1] << " " << delta_2.val[1][2] << " " << delta_2.val[1][3] << " " << delta_2.val[2][0] << " " << delta_2.val[2][1] << " " << delta_2.val[2][2] << " " << delta_2.val[2][3] << "\n";
-    myfile5.close();
-
-    /*std::vector<Matrix> deltas = loadPoses("align.txt");
-    std::cout << "read delta: " << deltas[0] << std::endl; 
-    std::cout << "read delta_2: " << deltas[1] << std::endl; 
-    Matrix delta = deltas[0];
-    Matrix delta_2 = deltas[1];*/
-    /****************************************************************************************/
-
-    /*Eigen::Isometry3d first_estimate = keyframes[index]->node->estimate();
-    Eigen::Isometry3d first_gt = MatrixToIsometry(gt[0]);
-    Eigen::Matrix3d R = first_gt.linear() * first_estimate.linear().transpose();
-    Eigen::Vector3d t = first_gt.translation() - R * first_estimate.translation();
-    Eigen::Isometry3d tt = first_estimate * base_camera * first_gt.inverse();
-    //tt.linear() = R;
-    //tt.translation() = t;
-    Matrix tt_m = IsometryToMatrix(tt);*/
-    
-    visualization_msgs::Marker gt_traj_marker;
-    gt_traj_marker.header.frame_id = "map";
-    gt_traj_marker.header.stamp = ros::Time::now();
-    gt_traj_marker.ns = "gt";
-    gt_traj_marker.id = 0;
-    gt_traj_marker.type = visualization_msgs::Marker::SPHERE_LIST;
-    gt_traj_marker.action = visualization_msgs::Marker::ADD;
-
-    gt_traj_marker.pose.orientation.w = 1.0;
-    gt_traj_marker.scale.x = gt_traj_marker.scale.y = gt_traj_marker.scale.z = 0.5;
-    //delta = tt_m;
-
-    for(int i = 0; i < gt.size(); i++) {
-      geometry_msgs::Point p;
-
-      p.x = (delta * gt[i]).val[0][3];
-      p.y = (delta * gt[i]).val[1][3];
-      p.z = (delta * gt[i]).val[2][3];
-      gt_traj_marker.points.push_back(p);
-      std_msgs::ColorRGBA c;
-      c.r = 1.0;
-      c.g = 1.0;
-      c.b = 1.0;
-      c.a = 1.0;
-      gt_traj_marker.colors.push_back(c);
-    }
-
-    gt_markers_pub.publish(gt_traj_marker);
-    /***************************************************************************************/
-    std::ofstream myfile;
-    myfile.open ("poses.txt");
-    std::ofstream myfile2;
-    myfile2.open ("gt.txt");
-    std::ofstream myfile3;
-    myfile3.open ("dist.txt");
-    std::ofstream myfile4;
-    myfile4.open ("ate.txt");
+    // RPE start
+    Eigen::Matrix4d prev_pose = Eigen::Matrix4d::Identity();
+    Eigen::Matrix4d prev_gt = Eigen::Matrix4d::Identity();
+    std::vector<Eigen::Matrix4d> rpe_poses;
+    std::vector<Eigen::Matrix4d> rpe_gt;
     std::ofstream myfile6;
     myfile6.open ("rpe.txt");
-    std::cout << "dist" << std::endl;
-    float sum = 0.0;
-    float sum_sq = 0.0;
-    int j = 0;
-    Matrix prev_pose = Matrix::eye(4);
-    Matrix prev_gt = Matrix::eye(4);
-    std::vector<Matrix> rpe_poses;
-    std::vector<Matrix> rpe_gt;
-
+    bool first_enter = true;
     for(int i = 0; i < gt.size(); i++) {
-      int index = isIndexFromKeyframe(i);
-      if(index >= 0) {
-        j++;
-        Eigen::Isometry3d pose = keyframes[index]->node->estimate();
-        
-        Matrix pose_matrix = Matrix::eye(4);
-        pose_matrix.val[0][0] = pose.linear()(0,0); 
-        pose_matrix.val[0][1] = pose.linear()(0,1);
-        pose_matrix.val[0][2] = pose.linear()(0,2);
-        pose_matrix.val[0][3] = pose.translation()(0);
-        pose_matrix.val[1][0] = pose.linear()(1,0);
-        pose_matrix.val[1][1] = pose.linear()(1,1);
-        pose_matrix.val[1][2] = pose.linear()(1,2);
-        pose_matrix.val[1][3] = pose.translation()(1); 
-        pose_matrix.val[2][0] = pose.linear()(2,0); 
-        pose_matrix.val[2][1] = pose.linear()(2,1); 
-        pose_matrix.val[2][2] = pose.linear()(2,2); 
-        pose_matrix.val[2][3] = pose.translation()(2);
-
-        if(j != 1) {
-          rpe_poses.push_back(computeRelativeTrans(prev_pose, (delta_2*pose_matrix)));
+      int pos = getIndexPosition(i);
+      if(pos >= 0) {
+        Eigen::Matrix4d pose = keyframes[pos]->node->estimate().matrix();
+        if(!first_enter) {
+          rpe_poses.push_back(computeRelativeTrans(prev_pose, ((base_camera.inverse())*pose)));
           rpe_gt.push_back(computeRelativeTrans(prev_gt, gt[i]));
-        }
-        prev_pose = delta_2*pose_matrix;
+        } 
+        first_enter = false;
+        prev_pose = (base_camera.inverse())*pose;
         prev_gt = gt[i];
-        
-        Matrix pose_trans = delta_2*pose_matrix;
-        Matrix pose_error = Matrix::inv(gt[i])*pose_trans;
-        //std::cout << "pose_error: " << pose_error << std::endl;
-
-        float dx = pose_error.val[0][3];
-        float dy = pose_error.val[1][3];
-        float dz = pose_error.val[2][3];
-        float dist = sqrt(dx*dx+dy*dy+dz*dz);
-        sum += dist;
-        sum_sq += (dx*dx+dy*dy+dz*dz);
-        std::cout << dist << " " << dx << " " << dy << " " << dz << std::endl;
-        myfile3 << i << " " << dist << std::endl;
-        myfile << pose_trans.val[0][0] << " " << pose_trans.val[0][1] << " " << pose_trans.val[0][2] << " " << pose_trans.val[0][3] << " " << pose_trans.val[1][0] << " " << pose_trans.val[1][1] << " " << pose_trans.val[1][2] << " " << pose_trans.val[1][3] << " " << pose_trans.val[2][0] << " " << pose_trans.val[2][1] << " " << pose_trans.val[2][2] << " " << pose_trans.val[2][3] << "\n";
-      
-        myfile2 << gt[i].val[0][0] << " " << gt[i].val[0][1] << " " << gt[i].val[0][2] << " " << gt[i].val[0][3] << " " << gt[i].val[1][0] << " " << gt[i].val[1][1] << " " << gt[i].val[1][2] << " " << gt[i].val[1][3] << " " << gt[i].val[2][0] << " " << gt[i].val[2][1] << " " << gt[i].val[2][2] << " " << gt[i].val[2][3] << "\n";
-      }  
+      }
     }
-
-    // ate
-    float t_mean = sum/(j);
-    float t_variance = sqrt((sum_sq/(j))-(t_mean*t_mean));
-
-    std::cout << "ate t_mean: " << t_mean << std::endl;
-    std::cout << "ate t_variance: " << t_variance << std::endl;
-
-    myfile4 << t_mean << " " << t_variance << std::endl;
-
-    // rpe
+    
     double t_rpe_sum = 0.0;
     double r_rpe_sum = 0.0;
     for(int i = 0; i < rpe_poses.size(); i++) {
       //std::cout << "rpe gt " << i << ": " << rpe_gt[i] << std::endl;
       //std::cout << "rpe pose " << i << ": " << rpe_poses[i] << std::endl;
-      Matrix delta = computeRelativeTrans(rpe_gt[i], rpe_poses[i]);
+      Eigen::Matrix4d rpe_delta = computeRelativeTrans(rpe_gt[i], rpe_poses[i]);
       //std::cout << "delta gt - pos " << i << ": " << delta << std::endl;
 
-      double t = sqrt((delta.val[0][3]*delta.val[0][3])+(delta.val[1][3]*delta.val[1][3])+(delta.val[2][3]*delta.val[2][3]));
-      double temp = (((delta.val[0][0] + delta.val[1][1] + delta.val[2][2])-1)/2);
-      //std::cout << "temp prima: " << temp << std::endl; 
-      if(temp > 1.0)
-        temp = 1.0;
-      if(temp < -1.0)
-        temp = -1.0;
-      //std::cout << "temp dopo: " << temp << std::endl; 
-      double angle = std::acos(temp); 
+      double t = sqrt((rpe_delta(0,3)*rpe_delta(0,3))+(rpe_delta(1,3)*rpe_delta(1,3))+(rpe_delta(2,3)*rpe_delta(2,3)));
+      double angle_temp = (((rpe_delta(0,0) + rpe_delta(1,1) + rpe_delta(2,2))-1)/2);
+      if(angle_temp > 1.0)
+        angle_temp = 1.0;
+      if(angle_temp < -1.0)
+        angle_temp = -1.0;
+      double angle = std::acos(angle_temp); 
       /*std::cout << "t: " << t << std::endl;
       std::cout << "angle: " << angle << std::endl;*/   
 
       t_rpe_sum += t*t;
       r_rpe_sum += angle*angle;
     }
-
+    
     if(rpe_poses.size() > 0) {
       double t_rpe = sqrt(t_rpe_sum/(rpe_poses.size()));
       //std::cout << "r rpe sum: " << r_rpe_sum << std::endl;
       //std::cout << "t rpe sum: " << t_rpe_sum << std::endl;
       //std::cout << "size: " << rpe_poses.size() << std::endl;
       double r_rpe = sqrt(r_rpe_sum/(rpe_poses.size()));
-
+      myfile6 << t_rpe << " " << r_rpe << std::endl;
       std::cout << "t_rpe: " << t_rpe << std::endl;
       std::cout << "r_rpe: " << r_rpe << std::endl;
-
-      myfile6 << t_rpe << " " << r_rpe << std::endl;
     }
-
-    myfile.close();
-    myfile2.close();
-    myfile3.close();
-    myfile4.close();
     myfile6.close();
-    std::cout << "finished" << std::endl;
+    
+    // RPE end
 
+    // ATE start
+    if(private_nh.param<bool>("enable_ate_calculation", true)) {
+      int index = -1, k = 0;
+      while(k < keyframes.size()) {
+        index = getIndexPosition(k);
+        if(index >=0)
+          break;
+        k++;
+      }
+      if(index == -1)
+        index = 0;
+
+      Eigen::Matrix4d estimate = keyframes[index]->node->estimate().matrix();
+      //std::cout << "estimate: " << estimate.matrix() << std::endl;
+      //std::cout << "base camera: " << base_camera.matrix() << std::endl;
+      Eigen::Matrix4d tr = estimate*base_camera;
+
+      // delta transforms gt to keyframes, used for visualization
+      Eigen::Matrix4d delta = Eigen::Matrix4d::Identity();
+      delta = tr * (gt[index].inverse());
+      //std::cout << "delta: " << delta << std::endl;
+      
+      // delta2 transforms keyframes to gt, used for error calculation
+      Eigen::Matrix4d delta_2 = Eigen::Matrix4d::Identity();
+      delta_2 = gt[index] * (tr.inverse());
+      //std::cout << "delta_2: " << delta_2 << std::endl;
+      
+      std::ofstream myfile5;
+      myfile5.open("align.txt");
+      myfile5 << delta.format(lineFmt) << std::endl;
+      myfile5 << delta_2.format(lineFmt) << std::endl;
+      myfile5.close();
+      
+      // publish gt markers
+      visualization_msgs::Marker gt_traj_marker;
+      gt_traj_marker.header.frame_id = "map";
+      gt_traj_marker.header.stamp = ros::Time::now();
+      gt_traj_marker.ns = "gt";
+      gt_traj_marker.id = 0;
+      gt_traj_marker.type = visualization_msgs::Marker::SPHERE_LIST;
+      gt_traj_marker.action = visualization_msgs::Marker::ADD;
+
+      gt_traj_marker.pose.orientation.w = 1.0;
+      gt_traj_marker.scale.x = gt_traj_marker.scale.y = gt_traj_marker.scale.z = 0.7;
+
+      for(int i = 0; i < gt.size(); i++) {
+        geometry_msgs::Point p;
+
+        p.x = (delta * gt[i])(0,3);
+        p.y = (delta * gt[i])(1,3);
+        p.z = (delta * gt[i])(2,3);
+        gt_traj_marker.points.push_back(p);
+        std_msgs::ColorRGBA c;
+        c.r = 1.0;
+        c.g = 1.0;
+        c.b = 1.0;
+        c.a = 1.0;
+        gt_traj_marker.colors.push_back(c);
+      }
+
+      gt_markers_pub.publish(gt_traj_marker);
+      std::ofstream myfile;
+      myfile.open ("poses.txt");
+      std::ofstream myfile2;
+      myfile2.open ("gt.txt");
+      std::ofstream myfile3;
+      myfile3.open ("dist.txt");
+      std::ofstream myfile4;
+      myfile4.open ("ate.txt");
+      double sum = 0.0;
+      double sum_sq = 0.0;
+      int j = 0;
+
+      for(int i = 0; i < gt.size(); i++) {
+        int pos = getIndexPosition(i);
+        if(pos >= 0) {
+          j++;
+          Eigen::Matrix4d pose = keyframes[pos]->node->estimate().matrix();
+          Eigen::Matrix4d pose_trans = delta_2*pose;
+          Eigen::Matrix4d pose_error = (gt[i].inverse())*pose_trans;
+
+          double dx = pose_error(0, 3);
+          double dy = pose_error(1, 3);
+          double dz = pose_error(2, 3);
+          double dist = sqrt(dx*dx+dy*dy+dz*dz);
+          sum += dist;
+          sum_sq += (dist*dist);
+          std::cout << dist << " " << dx << " " << dy << " " << dz << std::endl;
+          myfile << pose.format(lineFmt) << std::endl;
+          myfile2 << gt[i].format(lineFmt) << std::endl;
+          myfile3 << i << " " << dist << std::endl;
+        }  
+      }
+
+      // ate
+      double t_mean = sum/(j);
+      double t_variance = sqrt((sum_sq/(j))-(t_mean*t_mean));
+
+      std::cout << "ate t_mean: " << t_mean << std::endl;
+      std::cout << "ate t_variance: " << t_variance << std::endl;
+
+      myfile4 << t_mean << " " << t_variance << std::endl;
+
+      myfile.close();
+      myfile2.close();
+      myfile3.close();
+      myfile4.close();
+    }
+    std::cout << "finished error computation" << std::endl;
+    //ATE end
     /****************************************************************************************/
-
   }
 
-  Matrix IsometryToMatrix(Eigen::Isometry3d iso) {
-    Matrix m = Matrix::eye(4);
-    m.val[0][0] = iso.linear()(0,0); 
-    m.val[0][1] = iso.linear()(0,1);
-    m.val[0][2] = iso.linear()(0,2);
-    m.val[0][3] = iso.translation()(0);
-    m.val[1][0] = iso.linear()(1,0);
-    m.val[1][1] = iso.linear()(1,1);
-    m.val[1][2] = iso.linear()(1,2);
-    m.val[1][3] = iso.translation()(1); 
-    m.val[2][0] = iso.linear()(2,0); 
-    m.val[2][1] = iso.linear()(2,1); 
-    m.val[2][2] = iso.linear()(2,2); 
-    m.val[2][3] = iso.translation()(2);
-    return m;
-  }
-
-  Eigen::Isometry3d MatrixToIsometry(Matrix m) {
-    Eigen::Isometry3d iso = Eigen::Isometry3d::Identity();
-    iso.linear()(0,0) = m.val[0][0]; 
-    iso.linear()(0,1) = m.val[0][1];
-    iso.linear()(0,2) = m.val[0][2];
-    iso.translation()(0) = m.val[0][3];
-    iso.linear()(1,0) = m.val[1][0];
-    iso.linear()(1,1) = m.val[1][1];
-    iso.linear()(1,2) = m.val[1][2];
-    iso.translation()(1) = m.val[1][3];
-    iso.linear()(2,0) = m.val[2][0];
-    iso.linear()(2,1) = m.val[2][1];
-    iso.linear()(2,2) = m.val[2][2];
-    iso.translation()(2) = m.val[2][3];
-    return iso;
-  }
-
-  Matrix computeRelativeTrans(Matrix pose1, Matrix pose2) {
-    //std::cout << "inizio" << std::endl;
-   
-    //std::cout << "pose 1: " << pose1 << std::endl;
-    //std::cout << "pose 2: " << pose2 << std::endl;
-    Matrix delta = Matrix::inv(pose1)*pose2;
-    //std::cout << "delta: " << delta << std::endl;
-    //std::cout << "fine" << std::endl;
+  Eigen::Matrix4d computeRelativeTrans(Eigen::Matrix4d pose1, Eigen::Matrix4d pose2) {
+    Eigen::Matrix4d delta = (pose1.inverse())*pose2;
     return delta;
   }
 
-  int isIndexFromKeyframe(int index) {
-    //std::cout << "search " << index << std::endl;
+  // get the position into the keyframes array of keyframe with index "index"
+  int getIndexPosition(int index) {
     for(int i = 0; i < keyframes.size(); i++) {
-      //std::cout << "i " << i << std::endl;
-      //std::cout << "internal index: " << keyframes[i]->index << std::endl;
       if(keyframes[i]->index==index) {
-        //std::cout << "found" << std::endl;
         return i;
       }
     }
-    //std::cout << "not found" << std::endl;
     return -1;
   }
 
@@ -1272,7 +1206,7 @@ private:
     traj_marker.type = visualization_msgs::Marker::SPHERE_LIST;
 
     traj_marker.pose.orientation.w = 1.0;
-    traj_marker.scale.x = traj_marker.scale.y = traj_marker.scale.z = 0.5;
+    traj_marker.scale.x = traj_marker.scale.y = traj_marker.scale.z = 0.7;
 
     visualization_msgs::Marker& imu_marker = markers.markers[1];
     imu_marker.header = traj_marker.header;
@@ -1286,57 +1220,11 @@ private:
     traj_marker.points.resize(keyframes.size() + buildings.size());
     traj_marker.colors.resize(keyframes.size() + buildings.size());
    
-    /***********************************************************************/
-    /*Eigen::Matrix4d gt_m = Eigen::Matrix4d::Identity(); 
-    gt_m(0,0) = gt[0].val[0][0];
-    gt_m(0,1) = gt[0].val[0][1];
-    gt_m(0,2) = gt[0].val[0][2];
-    gt_m(0,3) = gt[0].val[0][3];
-    gt_m(1,0) = gt[0].val[1][0];
-    gt_m(1,1) = gt[0].val[1][1];
-    gt_m(1,2) = gt[0].val[1][2];
-    gt_m(1,3) = gt[0].val[1][3];
-    gt_m(2,0) = gt[0].val[2][0];
-    gt_m(2,1) = gt[0].val[2][1];
-    gt_m(2,2) = gt[0].val[2][2];
-    gt_m(2,3) = gt[0].val[2][3];
-
-    tf::StampedTransform transform_t;
-    tf_listener.lookupTransform("base_link", "camera_gray_left", ros::Time(0), transform_t);
-    Eigen::Quaterniond q;
-    tf::quaternionTFToEigen(transform_t.getRotation(), q);
-    Eigen::Vector3d v;
-    tf::vectorTFToEigen (transform_t.getOrigin(), v);
-    Eigen::Matrix3d rot = q.normalized().toRotationMatrix();
-    //std::cout << "base_link -> camera_gray_left trans: " << v << std::endl;
-    //std::cout << "base_link -> camera_gray_left rot: " << rot << std::endl;
-
-    Eigen::Isometry3d estimate = keyframes[0]->node->estimate();
-    Eigen::Matrix4d estimate_m = Eigen::Matrix4d::Identity();
-    estimate_m.block<3, 1>(0, 3) = estimate.translation();
-    estimate_m.block<3, 3>(0, 0) = estimate.linear();
-    Eigen::Matrix4d base_camera_m = Eigen::Matrix4d::Identity();
-    base_camera_m.block<3, 1>(0, 3) = v;
-    base_camera_m.block<3, 3>(0, 0) = q.normalized().toRotationMatrix();*/
-    /*******************************************************************************/
-
     for(int i = 0; i < keyframes.size(); i++) {
       Eigen::Vector3d pos = keyframes[i]->node->estimate().translation();
       traj_marker.points[i].x = pos.x();
       traj_marker.points[i].y = pos.y();
       traj_marker.points[i].z = pos.z();
-
-      /***************************************************************************************/
-      /*Eigen::Matrix4d temp = Eigen::Matrix4d::Identity();
-      temp.block<3, 1>(0, 3) = keyframes[i]->node->estimate().translation();
-      temp.block<3, 3>(0, 0) = keyframes[i]->node->estimate().linear();
-      
-      Eigen::Matrix4d pos = gt_m*(base_camera_m.inverse())*(estimate_m.inverse())*temp;
-
-      traj_marker.points[i].x = pos(0, 3);
-      traj_marker.points[i].y = pos(1, 3);
-      traj_marker.points[i].z = pos(2, 3);*/
-      /**************************************************************************************/
 
       double p = static_cast<double>(i) / keyframes.size();
       traj_marker.colors[i].r = 1.0 - p;
@@ -1370,7 +1258,7 @@ private:
         traj_marker.points[i+keyframes.size()].y = pos.y();
         traj_marker.points[i+keyframes.size()].z = pos.z();
 
-        traj_marker.colors[i+keyframes.size()].r = 143.0/255.0;
+        traj_marker.colors[i+keyframes.size()].r = 255.0/255.0;
         traj_marker.colors[i+keyframes.size()].g = 0.0/255.0;
         traj_marker.colors[i+keyframes.size()].b = 255.0/255.0;
         traj_marker.colors[i+keyframes.size()].a = 1.0;
@@ -1387,7 +1275,7 @@ private:
     edge_marker.type = visualization_msgs::Marker::LINE_LIST;
 
     edge_marker.pose.orientation.w = 1.0;
-    edge_marker.scale.x = 0.05;
+    edge_marker.scale.x = 0.2;
 
     edge_marker.points.resize(graph_slam->graph->edges().size() * 2);
     edge_marker.colors.resize(graph_slam->graph->edges().size() * 2);
@@ -1736,12 +1624,10 @@ private:
   double radius_search;
   int min_neighbors_in_radius;
   int ii;
-  std::vector<Matrix> gt;
+  std::vector<Eigen::Matrix4d> gt;
   ros::Publisher gt_markers_pub;
   bool first_guess;
   Eigen::Matrix4f prev_guess;
-  
-  ros::Publisher b_tf_pub;
   tf::TransformBroadcaster b_tf_broadcaster;
 };
 

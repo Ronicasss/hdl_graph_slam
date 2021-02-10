@@ -10,13 +10,14 @@
 
 namespace hdl_graph_slam {
 
-KeyFrame::KeyFrame(const ros::Time& stamp, const Eigen::Isometry3d& odom, double accum_distance, const pcl::PointCloud<PointT>::ConstPtr& cloud, int index) : stamp(stamp), odom(odom), accum_distance(accum_distance), cloud(cloud), node(nullptr), index(index) {}
+KeyFrame::KeyFrame(const ros::Time& stamp, const Eigen::Isometry3d& odom, double accum_distance, const pcl::PointCloud<PointT>::ConstPtr& cloud, int index) : stamp(stamp), odom(odom), accum_distance(accum_distance), cloud(cloud), node(nullptr), index(index) {buildings_check = false;}
 
 KeyFrame::KeyFrame(const std::string& directory, g2o::HyperGraph* graph) : stamp(), odom(Eigen::Isometry3d::Identity()), accum_distance(-1), cloud(nullptr), node(nullptr) {
   load(directory, graph);
+  buildings_check = false;
 }
 
-KeyFrame::~KeyFrame() {}
+KeyFrame::~KeyFrame() {buildings_check = false;}
 
 void KeyFrame::save(const std::string& directory) {
   if(!boost::filesystem::is_directory(directory)) {

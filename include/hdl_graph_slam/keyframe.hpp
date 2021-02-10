@@ -53,6 +53,7 @@ public:
   boost::optional<int> utm_zone;                  // UTM zone and band needed for conversion to lla
   boost::optional<char> utm_band; 
   std::vector<BuildingNode::Ptr> buildings_nodes;       // buildings associated to this keyframe
+  bool buildings_check;
 };
 
 /**

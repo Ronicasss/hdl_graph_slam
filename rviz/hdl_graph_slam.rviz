@@ -7,6 +7,7 @@ Panels:
         - /Global Options1
         - /Status1
         - /TF1
+        - /TF1/Frames1
         - /MarkerArray1
         - /MarkerArray1/Namespaces1
         - /PointCloud25
@@ -439,11 +440,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 9.309380531311035
+      Scale: 10.568681716918945
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 8.366096496582031
-      Y: 8.532002449035645
+      X: 45.57243347167969
+      Y: 49.5539665222168
     Saved: ~
 Window Geometry:
   Displays:

@@ -126,7 +126,6 @@ add_library(hdl_graph_slam_nodelet
   src/hdl_graph_slam/building.cpp
   src/hdl_graph_slam/building_tools.cpp 
   src/hdl_graph_slam/building_node.cpp
-  src/hdl_graph_slam/matrix.cpp
 )
 target_link_libraries(hdl_graph_slam_nodelet
   ${catkin_LIBRARIES}
