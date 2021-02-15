@@ -32,9 +32,9 @@ namespace hdl_graph_slam {
 			static std::string downloadBuildings(double lat, double lon, double rad);
 			static std::vector<Building> parseBuildings(std::string result, Eigen::Vector3d zero_utm);
 			//static Building constructBuilding(std::string bstr); 
-			static pcl::PointCloud<pt3>::Ptr buildPointCloud(std::vector<std::string> nd_refs, std::vector<Node> nodes,Eigen::Vector3d zero_utm);
+			static pcl::PointCloud<PointT3>::Ptr buildPointCloud(std::vector<std::string> nd_refs, std::vector<Node> nodes,Eigen::Vector3d zero_utm);
 			static Node getNode(std::string nd_ref, std::vector<Node> nodes);
-			static pt3 toUtm(Eigen::Vector3d pt, Eigen::Vector3d zero_utm);
-			static pcl::PointCloud<pt3>::Ptr interpolate(pt3 a, pt3 b);	
+			static PointT3 toUtm(Eigen::Vector3d pt, Eigen::Vector3d zero_utm);
+			static pcl::PointCloud<PointT3>::Ptr interpolate(PointT3 a, PointT3 b);	
 	};
 }

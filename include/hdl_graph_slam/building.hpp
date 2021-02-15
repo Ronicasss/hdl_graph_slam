@@ -7,13 +7,13 @@
 #include <pcl/io/pcd_io.h>
 
 namespace hdl_graph_slam {
-	typedef pcl::PointXYZ pt3;
+	using PointT3 = pcl::PointXYZ;
 
 	class Building {
 		public: 
 			std::string id;
 			std::map<std::string,std::string> tags;
-			pcl::PointCloud<pt3>::Ptr geometry; // already interpolated and referred to zero utm
+			pcl::PointCloud<PointT3>::Ptr geometry; // already interpolated and referred to zero utm
 			Building(void);
 	};
 }

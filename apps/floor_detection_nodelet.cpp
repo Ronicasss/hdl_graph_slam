@@ -114,14 +114,13 @@ private:
     pcl::PointCloud<PointT>::Ptr filtered(new pcl::PointCloud<PointT>);
     pcl::transformPointCloud(*cloud, *filtered, tilt_matrix);
     filtered = plane_clip(filtered, Eigen::Vector4f(0.0f, 0.0f, 1.0f, sensor_height + height_clip_range), false);
+   
     filtered = plane_clip(filtered, Eigen::Vector4f(0.0f, 0.0f, 1.0f, sensor_height - height_clip_range), true);
 
     if(use_normal_filtering) {
       filtered = normal_filtering(filtered);
     }
-
     pcl::transformPointCloud(*filtered, *filtered, static_cast<Eigen::Matrix4f>(tilt_matrix.inverse()));
-
     if(floor_filtered_pub.getNumSubscribers()) {
       filtered->header = cloud->header;
       floor_filtered_pub.publish(filtered);
@@ -173,7 +172,6 @@ private:
 
       floor_points_pub.publish(inlier_cloud);
     }
-
     return Eigen::Vector4f(coeffs);
   }
 

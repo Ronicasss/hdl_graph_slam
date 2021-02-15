@@ -49,7 +49,7 @@ namespace hdl_graph_slam {
 						}
 					}
 					btemp.tags = tags;
-					pcl::PointCloud<pt3>::Ptr pc_temp(new pcl::PointCloud<pt3>);
+					pcl::PointCloud<PointT3>::Ptr pc_temp(new pcl::PointCloud<PointT3>);
 					*pc_temp = *(buildPointCloud(nd_refs,nodes,zero_utm));
 					btemp.geometry = pc_temp;
 					b.push_back(btemp);
@@ -62,8 +62,8 @@ namespace hdl_graph_slam {
     	return b;
 	}
 
-	pcl::PointCloud<pt3>::Ptr BuildingTools::buildPointCloud(std::vector<std::string> nd_refs, std::vector< Node> nodes, Eigen::Vector3d zero_utm) {
-		pcl::PointCloud<pt3>::Ptr pc_temp(new pcl::PointCloud<pt3>);
+	pcl::PointCloud<PointT3>::Ptr BuildingTools::buildPointCloud(std::vector<std::string> nd_refs, std::vector< Node> nodes, Eigen::Vector3d zero_utm) {
+		pcl::PointCloud<PointT3>::Ptr pc_temp(new pcl::PointCloud<PointT3>);
 		Eigen::Vector3d previous;
 		int first = 1;
 		for(std::vector<std::string>::const_iterator it = nd_refs.begin(); it != nd_refs.end(); ++it) {
@@ -102,7 +102,7 @@ namespace hdl_graph_slam {
 		return n_temp;
 	}
 
-	pcl::PointCloud<pt3>::Ptr BuildingTools::interpolate(pt3 a, pt3 b) {
+	pcl::PointCloud<PointT3>::Ptr BuildingTools::interpolate(PointT3 a, PointT3 b) {
 		// linear interpolation between a and b (both x and y)
 		// return pts = a + t(b-a) if a < b, 
 		// pts = a - t(a-b) if a > b, 
@@ -111,7 +111,7 @@ namespace hdl_graph_slam {
 		//std::cout << "b.x: " << b.x << " b.y: " << b.y << std::endl; 
 		float t = 0.001;
 		int neg_x = 0, neg_y = 0;
-		pcl::PointCloud<pt3>::Ptr pc_temp(new pcl::PointCloud<pt3>);
+		pcl::PointCloud<PointT3>::Ptr pc_temp(new pcl::PointCloud<PointT3>);
 		if(a.x<0 && b.x<0) {
 			neg_x = 1;
 			a.x = -a.x;
@@ -124,7 +124,7 @@ namespace hdl_graph_slam {
 		}
 
 		for(float i=0;i<=1;i=i+t) {
-			pt3 pt;
+			PointT3 pt;
 		
 			if(a.x == b.x) {
 				pt.x = a.x;
@@ -196,7 +196,7 @@ namespace hdl_graph_slam {
 	}
 
 	// toUtm converts to utm and already refer to zero_utm
-	pt3 BuildingTools::toUtm(Eigen::Vector3d pt, Eigen::Vector3d zero_utm) {
+	PointT3 BuildingTools::toUtm(Eigen::Vector3d pt, Eigen::Vector3d zero_utm) {
 		geographic_msgs::GeoPoint pt_lla;
     	geodesy::UTMPoint pt_utm;
 
@@ -206,12 +206,12 @@ namespace hdl_graph_slam {
     	geodesy::fromMsg(pt_lla, pt_utm); 
     	 //std::cout << "toutm zone: " << std::to_string(pt_utm.zone) << std::endl;
     	  //std::cout << "toutm band: " << pt_utm.band << std::endl;
-    	return pt3((pt_utm.easting-zero_utm(0)), (pt_utm.northing-zero_utm(1)), 0);
+    	return PointT3((pt_utm.easting-zero_utm(0)), (pt_utm.northing-zero_utm(1)), 0);
 	}
 
 	std::vector<Building> BuildingTools::getBuildings(double lat, double lon, double rad, Eigen::Vector3d zero_utm){
 		std::string result = downloadBuildings(lat, lon, rad);
-		std::cout << "Result: " << result << std::endl;
+		//std::cout << "Result: " << result << std::endl;
 		std::vector<Building> tmp = parseBuildings(result,zero_utm);
 		return tmp;
 	}

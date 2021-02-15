@@ -2,7 +2,7 @@
 <launch>
   <!-- arguments -->
   <arg name="nodelet_manager" default="velodyne_nodelet_manager" />
-  <arg name="enable_floor_detection" default="false" />
+  <arg name="enable_floor_detection" default="true" />
   <arg name="enable_gps" default="true" />
   <arg name="enable_imu_acc" default="false" />
   <arg name="enable_imu_ori" default="true" />
@@ -66,7 +66,7 @@
     <param name="points_topic" value="$(arg points_topic)" />
     <param name="tilt_deg" value="0.0" />
     <param name="sensor_height" value="1.73" />
-    <param name="height_clip_range" value="1.0" />
+    <param name="height_clip_range" value="2.0" />
     <param name="floor_pts_thresh" value="512" />
     <param name="use_normal_filtering" value="true" />
     <param name="normal_filter_thresh" value="20.0" />
@@ -78,7 +78,7 @@
     <remap from="/gpsimu_driver/imu_data" to="$(arg imu_topic)" />
 
     <param name="gt_path" value="/home/veronica/Desktop/Thesis/07.txt" />
-    <param name="test_enable_gps_imu" value="true" />
+    <param name="test_enable_gps_imu" value="false" />
     <param name="enable_ate_calculation" value="true" />
 
     <param name="points_topic" value="$(arg points_topic)" />
@@ -102,7 +102,7 @@
     <param name="gicp_reg_resolution" value="1.0" />
     <param name="gicp_reg_num_threads" value="0" />
 
-    <param name="gicp_initial_reg_resolution" value="1.0" />
+    <param name="gicp_initial_reg_resolution" value="2.5" />
     <param name="gicp_init_res_kf_thresh" value="35" />
     <param name="guess_thresh" value="0.6" />
 
@@ -115,15 +115,16 @@
     <param name="enable_gicp_euclidean_fitness_epsilon" value="false" />
     <param name="enable_gicp_ransac_outlier_threshold" value="false" />
 
-    <param name="building_edge_stddev_xy" value="0.25" />
-    <param name="building_edge_stddev_z" value="0.25" />
-    <param name="building_edge_stddev_q" value="1" />
+    <param name="building_edge_stddev_xy" value="0.0000001" />
+    <param name="building_edge_stddev_z" value="0.0000001" />
+    <param name="building_edge_stddev_q" value="0.0000001" />
     <param name="b_var_gain_a" value="20" />
     <param name="b_min_stddev_x" value="0.1" />
     <param name="b_max_stddev_x" value="3" />
     <param name="b_min_stddev_q" value="0.05" />
     <param name="b_max_stddev_q" value="0.2" />
     <param name="b_fitness_score_thresh" value="2" />
+    <param name="b_use_const_inf_matrix" value="true" />
 
     <param name="points_topic" value="$(arg points_topic)" />
     <!-- frame settings -->
@@ -171,7 +172,7 @@
     <param name="gps_edge_robust_kernel_size" value="1.0" />
     <param name="gps_edge_stddev_xy" value="4.0" />
     <param name="gps_edge_stddev_z" value="9.0" />
-    <!-- IMU orientation -->
+    <!-- IMU orientation --> 
     <param name="imu_orientation_edge_robust_kernel" value="NONE" />
     <param name="imu_orientation_edge_stddev" value="1.0" />
     <!-- IMU acceleration (gravity vector) -->
@@ -179,7 +180,7 @@
     <param name="imu_acceleration_edge_stddev" value="1.0" />
     <!-- ground plane -->
     <param name="floor_edge_robust_kernel" value="NONE" />
-    <param name="floor_edge_stddev" value="10.0" />
+    <param name="floor_edge_stddev" value="0.1" />
     <!-- scan matching -->
     <!-- robust kernels: NONE, Cauchy, DCS, Fair, GemanMcClure, Huber, PseudoHuber, Saturated, Tukey, Welsch -->
     <param name="odometry_edge_robust_kernel" value="NONE" />

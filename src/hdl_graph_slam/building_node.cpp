@@ -1,16 +1,16 @@
 #include "hdl_graph_slam/building_node.hpp"
 
 namespace hdl_graph_slam {
-	BuildingNode::BuildingNode() { referenceSystem = pcl::PointCloud<pt3>::Ptr(new pcl::PointCloud<pt3>); node = nullptr; }
+	BuildingNode::BuildingNode() { referenceSystem = pcl::PointCloud<PointT3>::Ptr(new pcl::PointCloud<PointT3>); node = nullptr; }
 
 	// this method refers all points of the building pc to local_origin
 	void BuildingNode::setReferenceSystem() {
 		setOrigin(); // set local_origin
-		pcl::PointCloud<pt3>::Ptr geometry = building.geometry;
+		pcl::PointCloud<PointT3>::Ptr geometry = building.geometry;
 
 		// for to correct all points as pt = pt - local_origin 
 		for(int i = 0; i< geometry->size(); i++) {
-			pt3 pt_temp = geometry->at(i);
+			PointT3 pt_temp = geometry->at(i);
 			pt_temp.x = pt_temp.x - local_origin(0);
 			pt_temp.y = pt_temp.y - local_origin(1);
 			pt_temp.z = 0;
@@ -21,13 +21,13 @@ namespace hdl_graph_slam {
 
 	// set local_origin = south-westernmost point of the building
 	void BuildingNode::setOrigin() {
-		pcl::PointCloud<pt3>::Ptr geometry = building.geometry;
+		pcl::PointCloud<PointT3>::Ptr geometry = building.geometry;
 		int sw = 1;
-		pt3 maxp;
+		PointT3 maxp;
 
 		// the south-westernmost point is the one with lowest x and y
 		for(int i = 0; i< geometry->size(); i++) {
-			pt3 pt_temp = geometry->at(i);
+			PointT3 pt_temp = geometry->at(i);
 			if(sw == 1) {
 				maxp = pt_temp;
 				sw = 0;

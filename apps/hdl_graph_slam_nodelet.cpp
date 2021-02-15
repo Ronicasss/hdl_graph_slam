@@ -79,6 +79,7 @@ namespace hdl_graph_slam {
 class HdlGraphSlamNodelet : public nodelet::Nodelet {
 public:
   typedef pcl::PointXYZI PointT;
+  typedef pcl::PointXYZ PointT3;
   typedef message_filters::sync_policies::ApproximateTime<nav_msgs::Odometry, sensor_msgs::PointCloud2> ApproxSyncPolicy;
 
   HdlGraphSlamNodelet() {}
@@ -101,6 +102,7 @@ public:
     buildings_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/buildings_cloud", 1);
     odom_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/odom_cloud", 32);
     transformed_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/transformed_cloud", 32);
+    estimated_buildings_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/estimated_buildings", 32);
     original_odom_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/original_odom_cloud", 32);
 
     lidar_range = private_nh.param<float>("lidar_range", 300);
@@ -262,6 +264,7 @@ private:
 
       Eigen::Isometry3d relative_pose = keyframe->odom.inverse() * prev_keyframe->odom;
       Eigen::MatrixXd information = inf_calclator->calc_information_matrix(keyframe->cloud, prev_keyframe->cloud, relative_pose);
+      std::cout << "keyframe inf: " << information << std::endl;
       auto edge = graph_slam->add_se3_edge(keyframe->node, prev_keyframe->node, relative_pose, information);
       graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("odometry_edge_robust_kernel", "NONE"), private_nh.param<double>("odometry_edge_robust_kernel_size", 1.0));
     }
@@ -525,6 +528,7 @@ private:
       }
 
       if(!floor_plane_node) {
+        std::cout << "fixed!" << std::endl;
         floor_plane_node = graph_slam->add_plane_node(Eigen::Vector4d(0.0, 0.0, 1.0, 0.0));
         floor_plane_node->setFixed(true);
       }
@@ -535,9 +539,10 @@ private:
       Eigen::Matrix3d information = Eigen::Matrix3d::Identity() * (1.0 / floor_edge_stddev);
       auto edge = graph_slam->add_se3_plane_edge(keyframe->node, floor_plane_node, coeffs, information);
       graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("floor_edge_robust_kernel", "NONE"), private_nh.param<double>("floor_edge_robust_kernel_size", 1.0));
+      std::cout << "plane inf: " << information << std::endl;
 
       keyframe->floor_coeffs = coeffs;
-
+      std::cout << "coeffs: " << coeffs << std::endl;
       updated = true;
     }
 
@@ -588,12 +593,12 @@ private:
         // download and parse buildings
         std::vector<Building> new_buildings = BuildingTools::getBuildings(lla.latitude, lla.longitude, lidar_range, e_zero_utm);
         if(new_buildings.size() > 0) {
-          std::cout << "We found buildings!" << std::endl;
+          std::cout << "We found buildings! " << keyframe->index << std::endl;
           b_updated = true;
  
           std::vector<BuildingNode::Ptr> bnodes; // vector containing all buildings nodes for current kf (new and not new)
           // buildingsCloud is the cloud containing all buildings
-          pcl::PointCloud<pcl::PointXYZ>::Ptr buildingsCloud(new pcl::PointCloud<pcl::PointXYZ>);
+          pcl::PointCloud<PointT3>::Ptr buildingsCloud(new pcl::PointCloud<PointT3>);
           bool first_b = first_guess; // used to fix first building node
 
           // construct building nodes
@@ -619,7 +624,7 @@ private:
               // set the node
               bt->node = graph_slam->add_se3_node(A); 
               if(first_b) {
-                bt->node->setFixed(true);
+                //bt->node->setFixed(true);
                 first_b = false;
               }
             
@@ -633,17 +638,17 @@ private:
           }
           
           // pre-processing on odom cloud
-          pcl::PointCloud<pcl::PointXYZ>::Ptr odomCloud(new pcl::PointCloud<pcl::PointXYZ>); // cloud containing lidar data
-          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_2(new pcl::PointCloud<pcl::PointXYZ>);
-          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_3(new pcl::PointCloud<pcl::PointXYZ>);
-          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_4(new pcl::PointCloud<pcl::PointXYZ>);
-          pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud_5(new pcl::PointCloud<pcl::PointXYZ>);
+          pcl::PointCloud<PointT3>::Ptr odomCloud(new pcl::PointCloud<PointT3>); // cloud containing lidar data
+          pcl::PointCloud<PointT3>::Ptr temp_cloud(new pcl::PointCloud<PointT3>);
+          pcl::PointCloud<PointT3>::Ptr temp_cloud_2(new pcl::PointCloud<PointT3>);
+          pcl::PointCloud<PointT3>::Ptr temp_cloud_3(new pcl::PointCloud<PointT3>);
+          pcl::PointCloud<PointT3>::Ptr temp_cloud_4(new pcl::PointCloud<PointT3>);
+          pcl::PointCloud<PointT3>::Ptr temp_cloud_5(new pcl::PointCloud<PointT3>);
           pcl::copyPointCloud(*keyframe->cloud,*temp_cloud); // convert from pointxyzi to pointxyz
 
           //std::cout << "size 1: " << temp_cloud->size() << std::endl; 
           // height filtering
-          pcl::PassThrough<pcl::PointXYZ> pass;
+          pcl::PassThrough<PointT3> pass;
           pass.setInputCloud (temp_cloud);
           pass.setFilterFieldName ("z");
           pass.setFilterLimits (ground_floor_max_thresh, 100.0);
@@ -651,9 +656,9 @@ private:
           temp_cloud_2->header = (*keyframe->cloud).header;
           //std::cout << "size 2: " << temp_cloud_2->size() << std::endl;
           // downsampling
-          pcl::Filter<pcl::PointXYZ>::Ptr downsample_filter;
+          pcl::Filter<PointT3>::Ptr downsample_filter;
           double downsample_resolution = private_nh.param<double>("downsample_resolution", 0.1);
-          boost::shared_ptr<pcl::VoxelGrid<pcl::PointXYZ>> voxelgrid(new pcl::VoxelGrid<pcl::PointXYZ>());
+          boost::shared_ptr<pcl::VoxelGrid<PointT3>> voxelgrid(new pcl::VoxelGrid<PointT3>());
           voxelgrid->setLeafSize(downsample_resolution, downsample_resolution, downsample_resolution);
           downsample_filter = voxelgrid;
           downsample_filter->setInputCloud(temp_cloud_2);
@@ -661,7 +666,7 @@ private:
           temp_cloud_3->header = temp_cloud_2->header;
           //std::cout << "size 3: " << temp_cloud_3->size() << std::endl;
           // outlier removal
-          pcl::RadiusOutlierRemoval<pcl::PointXYZ>::Ptr rad(new pcl::RadiusOutlierRemoval<pcl::PointXYZ>());
+          pcl::RadiusOutlierRemoval<PointT3>::Ptr rad(new pcl::RadiusOutlierRemoval<PointT3>());
           rad->setRadiusSearch(radius_search);
           rad->setMinNeighborsInRadius(min_neighbors_in_radius);
           //std::cout << "rad: " << rad->getRadiusSearch() << " neighbors: " << rad->getMinNeighborsInRadius() << std::endl; 
@@ -670,7 +675,7 @@ private:
           temp_cloud_4->header = temp_cloud_3->header;
   
           // project the cloud on plane z=0
-          pcl::ProjectInliers<pcl::PointXYZ> proj;
+          pcl::ProjectInliers<PointT3> proj;
           pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
           coefficients->values.resize(4);
           coefficients->values[0]=0;
@@ -724,14 +729,14 @@ private:
           std::cout << "guess: " << guess << std::endl;
 
           // gicp_omp registration
-          pcl::Registration<pcl::PointXYZ, pcl::PointXYZ>::Ptr registration;
+          pcl::Registration<PointT3, PointT3>::Ptr registration;
 
-          //pcl::registration::WarpPointRigid3D<pcl::PointXYZ, pcl::PointXYZ>::Ptr warp_fcn(new pcl::registration::WarpPointRigid3D<pcl::PointXYZ,pcl::PointXYZ>);
-          //pcl::registration::TransformationEstimationLM<pcl::PointXYZ, pcl::PointXYZ>::Ptr te(new pcl::registration::TransformationEstimationLM<pcl::PointXYZ, pcl::PointXYZ>);
+          //pcl::registration::WarpPointRigid3D<PointT3, PointT3>::Ptr warp_fcn(new pcl::registration::WarpPointRigid3D<PointT3,PointT3>);
+          //pcl::registration::TransformationEstimationLM<PointT3, PointT3>::Ptr te(new pcl::registration::TransformationEstimationLM<PointT3, PointT3>);
           //te->setWarpFunction(warp_fcn);
 
           std::cout << "registration: FAST_VGICP" << std::endl;
-          boost::shared_ptr<fast_gicp::FastVGICP<pcl::PointXYZ, pcl::PointXYZ>> gicp(new fast_gicp::FastVGICP<pcl::PointXYZ, pcl::PointXYZ>());
+          boost::shared_ptr<fast_gicp::FastVGICP<PointT3, PointT3>> gicp(new fast_gicp::FastVGICP<PointT3, PointT3>());
           gicp->setNumThreads(private_nh.param<int>("gicp_reg_num_threads", 0));
           if(keyframe->index >= (private_nh.param<int>("gicp_init_res_kf_thresh", 35)))
             gicp->setResolution(private_nh.param<double>("gicp_reg_resolution", 1.0));
@@ -740,11 +745,11 @@ private:
           
           
           //std::cout << "registration: FAST_GICP" << std::endl;
-          //boost::shared_ptr<fast_gicp::FastGICP<pcl::PointXYZ, pcl::PointXYZ>> gicp(new fast_gicp::FastGICP<pcl::PointXYZ, pcl::PointXYZ>());
+          //boost::shared_ptr<fast_gicp::FastGICP<PointT3, PointT3>> gicp(new fast_gicp::FastGICP<PointT3, PointT3>());
           //gicp->setNumThreads(private_nh.param<int>("reg_num_threads", 0));
 
           //std::cout << "registration: GICP_OMP" << std::endl;
-          //boost::shared_ptr<pclomp::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ>> gicp(new pclomp::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ>());
+          //boost::shared_ptr<pclomp::GeneralizedIterativeClosestPoint<PointT3, PointT3>> gicp(new pclomp::GeneralizedIterativeClosestPoint<PointT3, PointT3>());
           
           if(private_nh.param<bool>("enable_transformation_epsilon", true))
             gicp->setTransformationEpsilon(private_nh.param<double>("transformation_epsilon", 0.01));
@@ -772,7 +777,7 @@ private:
           //registration->setTransformationEstimation(te);
           registration->setInputTarget(buildingsCloud);
           registration->setInputSource(odomCloud);
-          pcl::PointCloud<pcl::PointXYZ>::Ptr aligned(new pcl::PointCloud<pcl::PointXYZ>());
+          pcl::PointCloud<PointT3>::Ptr aligned(new pcl::PointCloud<PointT3>());
           registration->align(*aligned, guess);
           std::cout << "has converged:" << registration->hasConverged() << " score: " << registration->getFitnessScore(2.0) << std::endl;
           Eigen::Matrix4f transformation = registration->getFinalTransformation();
@@ -791,19 +796,21 @@ private:
           Eigen::Isometry3d t_s_bs_iso = Eigen::Isometry3d::Identity();
           t_s_bs_iso.matrix() = t_s_bs;
 
-          /*Eigen::MatrixXd information_matrix = Eigen::MatrixXd::Identity(6, 6);
-          information_matrix.topLeftCorner(2, 2).array() /= private_nh.param<float>("building_edge_stddev_xy", 0.25);
-          information_matrix(2, 2) /= private_nh.param<float>("building_edge_stddev_z", 0.25);
-          information_matrix.bottomRightCorner(3, 3).array() /= private_nh.param<float>("building_edge_stddev_q", 1);
-          */
 
-          // pc XYZI needed to compute the information matrix 
-          pcl::PointCloud<PointT>::Ptr btempcloud(new pcl::PointCloud<PointT>);
-          pcl::copyPointCloud(*buildingsCloud,*btempcloud); // convert pcl buildings pxyz to pxyzi
-          pcl::PointCloud<PointT>::Ptr otempcloud(new pcl::PointCloud<PointT>);
-          pcl::copyPointCloud(*odomCloud,*otempcloud); // convert pcl odom pxyz to pxyzi
-          Eigen::MatrixXd information_matrix = inf_calclator->calc_information_matrix_buildings(btempcloud, otempcloud, t_s_bs_iso);
-          //std::cout << "buildings inf: " << information_matrix << std::endl;
+          Eigen::MatrixXd information_matrix = Eigen::MatrixXd::Identity(6, 6);
+          if(private_nh.param<bool>("b_use_const_inf_matrix", false)) {
+            information_matrix.topLeftCorner(2, 2).array() /= private_nh.param<float>("building_edge_stddev_xy", 0.25);
+            information_matrix(2, 2) /= private_nh.param<float>("building_edge_stddev_z", 0.25);
+            information_matrix.bottomRightCorner(3, 3).array() /= private_nh.param<float>("building_edge_stddev_q", 1);
+          } else {
+            // pc XYZI needed to compute the information matrix 
+            pcl::PointCloud<PointT>::Ptr btempcloud(new pcl::PointCloud<PointT>);
+            pcl::copyPointCloud(*buildingsCloud,*btempcloud); // convert pcl buildings pxyz to pxyzi
+            pcl::PointCloud<PointT>::Ptr otempcloud(new pcl::PointCloud<PointT>);
+            pcl::copyPointCloud(*odomCloud,*otempcloud); // convert pcl odom pxyz to pxyzi
+            information_matrix = inf_calclator->calc_information_matrix_buildings(btempcloud, otempcloud, t_s_bs_iso);
+          }
+          std::cout << "buildings inf: " << information_matrix << std::endl;
 
           //auto edge = graph_slam->add_se3_edge_prior(keyframe->node, t_s_bs_iso*(keyframe->odom), information_matrix);
           //graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
@@ -985,6 +992,33 @@ private:
       markers_pub.publish(markers);
     }
 
+    /*****************************************************************************/
+    /*pcl::PointCloud<PointT3>::Ptr estimatedBuildingsCloud(new pcl::PointCloud<PointT3>);
+    pcl::PointCloud<PointT3>::Ptr buildingsCloud(new pcl::PointCloud<PointT3>);
+    for(auto it3 = buildings.begin(); it3 != buildings.end(); it3++)
+    {
+      BuildingNode::Ptr btemp = *it3;
+      Eigen::Isometry3d est = btemp->node->estimate();
+      pcl::PointCloud<PointT3>::Ptr temp_cloud_7(new pcl::PointCloud<PointT3>);
+      pcl::transformPointCloud(*(btemp->referenceSystem), *temp_cloud_7, est.matrix());
+      *estimatedBuildingsCloud += *temp_cloud_7;
+
+      *buildingsCloud += *btemp->building.geometry;
+    }
+
+    sensor_msgs::PointCloud2Ptr eb_cloud_msg(new sensor_msgs::PointCloud2());
+    pcl::toROSMsg(*estimatedBuildingsCloud, *eb_cloud_msg);
+    eb_cloud_msg->header.frame_id = "map";
+    eb_cloud_msg->header.stamp = keyframe->stamp;
+    estimated_buildings_pub.publish(eb_cloud_msg);
+
+    sensor_msgs::PointCloud2Ptr b_cloud_msg(new sensor_msgs::PointCloud2());
+    pcl::toROSMsg(*buildingsCloud, *b_cloud_msg);
+    b_cloud_msg->header.frame_id = "map";
+    b_cloud_msg->header.stamp = keyframe->stamp;
+    buildings_pub.publish(b_cloud_msg);*/
+    /*****************************************************************************/
+
     /********************************************************************************************/
     // errors computation
     // RPE always computed
@@ -1147,7 +1181,7 @@ private:
           double dist = sqrt(dx*dx+dy*dy+dz*dz);
           sum += dist;
           sum_sq += (dist*dist);
-          std::cout << dist << " " << dx << " " << dy << " " << dz << std::endl;
+          //std::cout << dist << " " << dx << " " << dy << " " << dz << std::endl;
           myfile << pose.format(lineFmt) << std::endl;
           myfile2 << gt[i].format(lineFmt) << std::endl;
           myfile3 << i << " " << dist << std::endl;
@@ -1620,6 +1654,7 @@ private:
   ros::Publisher odom_pub;
   ros::Publisher transformed_pub;
   ros::Publisher original_odom_pub;
+  ros::Publisher estimated_buildings_pub;
   double ground_floor_max_thresh;
   double radius_search;
   int min_neighbors_in_radius;
