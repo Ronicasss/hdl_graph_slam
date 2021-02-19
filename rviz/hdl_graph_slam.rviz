@@ -40,7 +40,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: PointCloud2
   - Class: rviz/Selection
     Name: Selection
 Preferences:
@@ -243,6 +243,7 @@ Visualization Manager:
       Name: MarkerArray
       Namespaces:
         edges: true
+        imu: true
         loop_close_radius: false
         nodes: true
       Queue Size: 100
@@ -354,7 +355,7 @@ Visualization Manager:
       Axis: Z
       Channel Name: intensity
       Class: rviz/PointCloud2
-      Color: 25; 255; 25
+      Color: 255; 25; 25
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: false
@@ -472,11 +473,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 7.522578239440918
+      Scale: 12.636398315429688
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz)
-      X: 3.0991740226745605
-      Y: 12.396696090698242
+      X: 83.30928039550781
+      Y: 38.93026351928711
     Saved: ~
 Window Geometry:
   Displays:

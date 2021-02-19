@@ -88,6 +88,31 @@ static Eigen::Isometry3d odom2isometry(const nav_msgs::OdometryConstPtr& odom_ms
   return isometry;
 }
 
+static Eigen::Isometry2d odom2isometry2d(const nav_msgs::OdometryConstPtr& odom_msg) {
+  const auto& orientation = odom_msg->pose.pose.orientation;
+  const auto& position = odom_msg->pose.pose.position;
+
+  Eigen::Quaterniond quat;
+  quat.w() = orientation.w;
+  quat.x() = orientation.x;
+  quat.y() = orientation.y;
+  quat.z() = orientation.z;
+
+  Eigen::Vector3d ea = (quat.toRotationMatrix()).eulerAngles(2, 1, 0); 
+  //std::cout << "to ypr angles: " << ea << std::endl;
+  //std::cout << "yawss: " << ea[0] << std::endl;
+
+  Eigen::Isometry2d isometry = Eigen::Isometry2d::Identity();
+  Eigen::Rotation2D<double> rot(ea[0]);
+  isometry.linear() = rot.toRotationMatrix();
+  //std::cout << "rot1: " << cos(ea[0]) << " " << -sin(ea[0]) << " " << sin(ea[0]) << " " << cos(ea[0]) << std::endl;
+  //std::cout << "rot2: " << isometry.linear() << std::endl;
+  isometry.translation() = Eigen::Vector2d(position.x, position.y);
+  //std::cout << "tr: " << isometry.translation() << std::endl;
+  //std::cout << "iso: " << isometry.matrix() << std::endl;
+  return isometry;
+}
+
 }  // namespace hdl_graph_slam
 
 #endif  // ROS_UTILS_HPP

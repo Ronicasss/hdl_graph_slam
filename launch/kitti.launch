@@ -115,9 +115,9 @@
     <param name="enable_gicp_euclidean_fitness_epsilon" value="false" />
     <param name="enable_gicp_ransac_outlier_threshold" value="false" />
 
-    <param name="building_edge_stddev_xy" value="0.0000001" />
-    <param name="building_edge_stddev_z" value="0.0000001" />
-    <param name="building_edge_stddev_q" value="0.0000001" />
+    <param name="building_edge_stddev_xy" value="1" />
+    <param name="building_edge_stddev_z" value="1" />
+    <param name="building_edge_stddev_q" value="1" />
     <param name="b_var_gain_a" value="20" />
     <param name="b_min_stddev_x" value="0.1" />
     <param name="b_max_stddev_x" value="3" />
@@ -180,7 +180,7 @@
     <param name="imu_acceleration_edge_stddev" value="1.0" />
     <!-- ground plane -->
     <param name="floor_edge_robust_kernel" value="NONE" />
-    <param name="floor_edge_stddev" value="0.1" />
+    <param name="floor_edge_stddev" value="0.0001" />
     <!-- scan matching -->
     <!-- robust kernels: NONE, Cauchy, DCS, Fair, GemanMcClure, Huber, PseudoHuber, Saturated, Tukey, Welsch -->
     <param name="odometry_edge_robust_kernel" value="NONE" />

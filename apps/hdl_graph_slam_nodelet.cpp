@@ -183,6 +183,8 @@ private:
     const ros::Time& stamp = cloud_msg->header.stamp;
     Eigen::Isometry3d odom = odom2isometry(odom_msg);
 
+    Eigen::Isometry2d odom2 = odom2isometry2d(odom_msg);
+
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
     pcl::fromROSMsg(*cloud_msg, *cloud);
     if(base_frame_id.empty()) {
@@ -1183,6 +1185,14 @@ private:
           sum_sq += (dist*dist);
           //std::cout << dist << " " << dx << " " << dy << " " << dz << std::endl;
           myfile << pose.format(lineFmt) << std::endl;
+          /*std::cout << "pose: " << pose << std::endl;
+          Eigen::Vector3d ea = (pose.block<3, 3>(0, 0)).eulerAngles(2, 1, 0); 
+          std::cout << "to ypr angles: " << ea << std::endl;
+          std::cout << "yawss: " << ea[0] << std::endl;
+          Eigen::Vector3d ea2 = (pose.block<3, 3>(0, 0)).eulerAngles(0, 1, 2); 
+          std::cout << "to Euler angles: " << ea2 << std::endl;
+          Eigen::AngleAxisd newAngleAxis(pose.block<3, 3>(0, 0));
+          std::cout << "angle: " << newAngleAxis.angle() << "\naxis: " << newAngleAxis.axis() << std::endl;*/
           myfile2 << gt[i].format(lineFmt) << std::endl;
           myfile3 << i << " " << dist << std::endl;
         }  
