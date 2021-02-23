@@ -741,32 +741,32 @@ private:
             //pcl::registration::TransformationEstimationLM<PointT3, PointT3>::Ptr te(new pcl::registration::TransformationEstimationLM<PointT3, PointT3>);
             //te->setWarpFunction(warp_fcn);
 
-            /*std::cout << "registration: FAST_VGICP" << std::endl;
+            std::cout << "registration: FAST_VGICP" << std::endl;
             boost::shared_ptr<fast_gicp::FastVGICP<PointT3, PointT3>> gicp(new fast_gicp::FastVGICP<PointT3, PointT3>());
             gicp->setNumThreads(private_nh.param<int>("gicp_reg_num_threads", 0));
             if(keyframe->index >= (private_nh.param<int>("gicp_init_res_kf_thresh", 35)))
               gicp->setResolution(private_nh.param<double>("gicp_reg_resolution", 1.0));
             else
               gicp->setResolution(private_nh.param<double>("gicp_initial_reg_resolution", 2.0));
-            */
+            
             
             //std::cout << "registration: FAST_GICP" << std::endl;
             //boost::shared_ptr<fast_gicp::FastGICP<PointT3, PointT3>> gicp(new fast_gicp::FastGICP<PointT3, PointT3>());
             //gicp->setNumThreads(private_nh.param<int>("reg_num_threads", 0));
 
-            std::cout << "registration: GICP_OMP" << std::endl;
-            boost::shared_ptr<pclomp::GeneralizedIterativeClosestPoint<PointT3, PointT3>> gicp(new pclomp::GeneralizedIterativeClosestPoint<PointT3, PointT3>());
+            //std::cout << "registration: GICP_OMP" << std::endl;
+            //boost::shared_ptr<pclomp::GeneralizedIterativeClosestPoint<PointT3, PointT3>> gicp(new pclomp::GeneralizedIterativeClosestPoint<PointT3, PointT3>());
             
             if(private_nh.param<bool>("enable_transformation_epsilon", true))
               gicp->setTransformationEpsilon(private_nh.param<double>("transformation_epsilon", 0.01));
             if(private_nh.param<bool>("enable_maximum_iterations", true))
               gicp->setMaximumIterations(private_nh.param<int>("maximum_iterations", 64));
             if(private_nh.param<bool>("enable_use_reciprocal_correspondences", true))
-              gicp->setUseReciprocalCorrespondences(private_nh.param<bool>("use_reciprocal_correspondences", false));
+              //gicp->setUseReciprocalCorrespondences(private_nh.param<bool>("use_reciprocal_correspondences", false));
             if(private_nh.param<bool>("enable_gicp_correspondence_randomness", true))
               gicp->setCorrespondenceRandomness(private_nh.param<int>("gicp_correspondence_randomness", 20));
             if(private_nh.param<bool>("enable_gicp_max_optimizer_iterations", true))
-              gicp->setMaximumOptimizerIterations(private_nh.param<int>("gicp_max_optimizer_iterations", 20));
+              //gicp->setMaximumOptimizerIterations(private_nh.param<int>("gicp_max_optimizer_iterations", 20));
 
             if(private_nh.param<bool>("enable_gicp_max_correspondance_distance", false))
               gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance", 0.05));
