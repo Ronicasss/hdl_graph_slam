@@ -89,11 +89,31 @@ static Eigen::Isometry3d odom2isometry(const nav_msgs::OdometryConstPtr& odom_ms
 }
 
 static Eigen::Isometry2d pose2isometry2d(Eigen::Quaterniond quat, Eigen::Vector3d pos) {
-  Eigen::Vector3d ea = (quat.toRotationMatrix()).eulerAngles(2, 1, 0); 
-  Eigen::Isometry2d isometry = Eigen::Isometry2d::Identity();
-  Eigen::Rotation2D<double> rot(ea[0]);
-  isometry.linear() = rot.toRotationMatrix();
-  isometry.translation() = Eigen::Vector2d(pos.x, pos.y);
+  Eigen::AngleAxisd aa = Eigen::AngleAxisd(quat);
+  double angle = 0.0;
+  if(aa.axis()(2) > 0)  
+    angle = aa.angle();
+  else
+    angle = -aa.angle();
+  Eigen::Rotation2D<double> rot(angle);
+
+  Eigen::Isometry2d iso = Eigen::Isometry2d::Identity();
+  iso.linear() = rot.toRotationMatrix();
+  iso.translation() = pos.block<2,1>(0,0);
+}
+
+static Eigen::Isometry2d pose2isometry2d(Eigen::Matrix3d rot_mat, Eigen::Vector3d pos) {
+  Eigen::AngleAxisd aa = Eigen::AngleAxisd(rot_mat);
+  double angle = 0.0;
+  if(aa.axis()(2) > 0)  
+    angle = aa.angle();
+  else
+    angle = -aa.angle();
+  Eigen::Rotation2D<double> rot(angle);
+
+  Eigen::Isometry2d iso = Eigen::Isometry2d::Identity();
+  iso.linear() = rot.toRotationMatrix();
+  iso.translation() = pos.block<2,1>(0,0);
 }
 
 static Eigen::Isometry2d odom2isometry2d(const nav_msgs::OdometryConstPtr& odom_msg) {
@@ -109,6 +129,28 @@ static Eigen::Isometry2d odom2isometry2d(const nav_msgs::OdometryConstPtr& odom_
   Eigen::Vector3d pos(position.x, position.y, position.z);
 
   return pose2isometry2d(quat, pos);
+}
+
+static Eigen::Isometry3d isometry2dto3d(Eigen::Isometry2d iso2d) {
+  Eigen::Isometry3d iso3d = Eigen::Isometry3d::Identity();
+  iso3d.linear().block<2,2>(0,0) = iso2d.linear();
+  iso3d.translation().block<2,1>(0,0) = iso2d.translation();
+  return iso3d;
+}
+
+static Eigen::Isometry2d isometry3dto2d(Eigen::Isometry3d iso3d) {
+  Eigen::Isometry2d iso2d = pose2isometry2d(iso3d.linear(), iso3d.translation());
+  return iso2d;
+}  
+
+static Eigen::Matrix3d matrix4dto3d(Eigen::Matrix4d m4d) {
+  Eigen::Isometry2d iso2d = pose2isometry2d(m4d.block<3,3>(0,0), m4d.block<3,1>(0,3));
+  return iso2d.matrix();
+} 
+
+static Eigen::Matrix3f matrix4fto3f(Eigen::Matrix4f m4f) {
+  Eigen::Isometry2d iso2d = pose2isometry2d(m4f.block<3,3>(0,0).cast<double>(), m4f.block<3,1>(0,3).cast<double>());
+  return iso2d.matrix().cast<float>();
 }
 
 }  // namespace hdl_graph_slam

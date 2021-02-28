@@ -26,7 +26,7 @@
 #include <g2o/robust_kernel_io.hpp>
 
 #include <g2o/types/slam2d/types_slam2d.h>
-#include <g2o/types/slam2Sd_addons/types_slam2d_addons.h>
+#include <g2o/types/slam2d_addons/types_slam2d_addons.h>
 
 G2O_USE_OPTIMIZATION_LIBRARY(pcg)
 G2O_USE_OPTIMIZATION_LIBRARY(cholmod)  // be aware of that cholmod brings GPL dependency

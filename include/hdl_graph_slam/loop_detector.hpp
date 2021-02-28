@@ -8,7 +8,9 @@
 #include <hdl_graph_slam/registrations.hpp>
 #include <hdl_graph_slam/graph_slam.hpp>
 
-#include <g2o/types/slam3d/vertex_se3.h>
+#include <g2o/types/slam2d/vertex_se2.h>
+
+#include <hdl_graph_slam/ros_utils.hpp>
 
 namespace hdl_graph_slam {
 
@@ -17,12 +19,12 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   using Ptr = std::shared_ptr<Loop>;
 
-  Loop(const KeyFrame::Ptr& key1, const KeyFrame::Ptr& key2, const Eigen::Matrix4f& relpose) : key1(key1), key2(key2), relative_pose(relpose) {}
+  Loop(const KeyFrame::Ptr& key1, const KeyFrame::Ptr& key2, const Eigen::Matrix3f& relpose) : key1(key1), key2(key2), relative_pose(relpose) {}
 
 public:
   KeyFrame::Ptr key1;
   KeyFrame::Ptr key2;
-  Eigen::Matrix4f relative_pose;
+  Eigen::Matrix3f relative_pose;
 };
 
 /**
@@ -97,7 +99,7 @@ private:
       const auto& pos2 = new_keyframe->node->estimate().translation();
 
       // estimated distance between keyframes is too small
-      double dist = (pos1.head<2>() - pos2.head<2>()).norm();
+      double dist = (pos1 - pos2).norm();
       if(dist > distance_thresh) {
         continue;
       }
@@ -134,11 +136,9 @@ private:
     pcl::PointCloud<PointT>::Ptr aligned(new pcl::PointCloud<PointT>());
     for(const auto& candidate : candidate_keyframes) {
       registration->setInputSource(candidate->cloud);
-      Eigen::Isometry3d new_keyframe_estimate = new_keyframe->node->estimate();
-      new_keyframe_estimate.linear() = Eigen::Quaterniond(new_keyframe_estimate.linear()).normalized().toRotationMatrix();
-      Eigen::Isometry3d candidate_estimate = candidate->node->estimate();
-      candidate_estimate.linear() = Eigen::Quaterniond(candidate_estimate.linear()).normalized().toRotationMatrix();
-      Eigen::Matrix4f guess = (new_keyframe_estimate.inverse() * candidate_estimate).matrix().cast<float>();
+      Eigen::Isometry2d new_keyframe_estimate = new_keyframe->node->estimate().toIsometry();
+      Eigen::Isometry2d candidate_estimate = candidate->node->estimate().toIsometry();
+      Eigen::Matrix4f guess = ((isometry2dto3d(new_keyframe_estimate)).inverse() * (isometry2dto3d(candidate_estimate))).matrix().cast<float>();
       guess(2, 3) = 0.0;
       registration->align(*aligned, guess);
       std::cout << "." << std::flush;
@@ -167,7 +167,7 @@ private:
 
     last_edge_accum_distance = new_keyframe->accum_distance;
 
-    return std::make_shared<Loop>(new_keyframe, best_matched, relative_pose);
+    return std::make_shared<Loop>(new_keyframe, best_matched, matrix4fto3f(relative_pose));
   }
 
 private:

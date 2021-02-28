@@ -38,10 +38,9 @@ namespace hdl_graph_slam {
 			}
 		}
 		// convert maxp into Eigen::Vector3d
-		Eigen::Vector3d result;
+		Eigen::Vector2d result;
 		result(0) = maxp.x;
 		result(1) = maxp.y;
-		result(2) = 0;
 		//std::cout << "local origin: " << result(0) << ", " << result(1) << std::endl;
 		local_origin = result;  
 		return;
