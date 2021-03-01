@@ -2,7 +2,7 @@
 <launch>
   <!-- arguments -->
   <arg name="nodelet_manager" default="velodyne_nodelet_manager" />
-  <arg name="enable_floor_detection" default="true" />
+  <arg name="enable_floor_detection" default="false" />
   <arg name="enable_gps" default="true" />
   <arg name="enable_imu_acc" default="false" />
   <arg name="enable_imu_ori" default="true" />
@@ -92,7 +92,7 @@
     <param name="test_enable_gps_imu" value="false" />
     <param name="enable_ate_calculation" value="true" />
     <param name="enable_buildings" value="true" />
-    <param name="fix_first_building" value="false" />
+    <param name="fix_first_building" value="true" />
 
     <param name="points_topic" value="$(arg points_topic)" />
     <param name="lidar_range" value="20" />

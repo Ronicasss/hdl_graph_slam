@@ -19,7 +19,7 @@
 namespace hdl_graph_slam {
 	class BuildingTools {
 		public: 
-			static std::vector<Building> getBuildings(double lat, double lon, double rad, Eigen::Vector3d zero_utm);
+			static std::vector<Building> getBuildings(double lat, double lon, double rad, Eigen::Vector2d zero_utm);
 			struct Node
 			{
 			    std::string id;

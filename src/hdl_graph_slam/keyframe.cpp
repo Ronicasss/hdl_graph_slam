@@ -107,7 +107,7 @@ bool KeyFrame::load(const std::string& directory, g2o::HyperGraph* graph) {
           ifs >> or_mat(i, j);
         }
       }
-      orientation = or_mat;
+      orientation = Eigen::Rotation2D<double>(or_mat);
     } else if(token == "id") {
       ifs >> node_id;
     }

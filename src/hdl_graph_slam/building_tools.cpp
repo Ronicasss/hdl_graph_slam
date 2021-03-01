@@ -209,10 +209,13 @@ namespace hdl_graph_slam {
     	return PointT3((pt_utm.easting-zero_utm(0)), (pt_utm.northing-zero_utm(1)), 0);
 	}
 
-	std::vector<Building> BuildingTools::getBuildings(double lat, double lon, double rad, Eigen::Vector3d zero_utm){
+	std::vector<Building> BuildingTools::getBuildings(double lat, double lon, double rad, Eigen::Vector2d zero_utm){
 		std::string result = downloadBuildings(lat, lon, rad);
 		//std::cout << "Result: " << result << std::endl;
-		std::vector<Building> tmp = parseBuildings(result,zero_utm);
+		Eigen::Vector3d v;
+		v.block<2,1>(0,0) = zero_utm;
+		v(2) = 0;
+		std::vector<Building> tmp = parseBuildings(result,v);
 		return tmp;
 	}
 }

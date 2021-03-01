@@ -42,6 +42,36 @@ static geometry_msgs::TransformStamped matrix2transform(const ros::Time& stamp, 
   return odom_trans;
 }
 
+static Eigen::Matrix4f matrix3fto4f(Eigen::Matrix3f m3f) {
+  Eigen::Matrix4f m4f = Eigen::Matrix4f::Identity();
+  m4f.block<2,2>(0,0) = m3f.block<2,2>(0,0);
+  m4f.block<2,1>(0,3) = m3f.block<2,1>(0,2);
+  return m4f;
+} 
+
+static geometry_msgs::TransformStamped matrix2transform2d(const ros::Time& stamp, const Eigen::Matrix3f& pose_2d, const std::string& frame_id, const std::string& child_frame_id) {
+  Eigen::Matrix4f pose = matrix3fto4f(pose_2d);
+  Eigen::Quaternionf quat(pose.block<3, 3>(0, 0));
+  quat.normalize();
+  geometry_msgs::Quaternion odom_quat;
+  odom_quat.w = quat.w();
+  odom_quat.x = quat.x();
+  odom_quat.y = quat.y();
+  odom_quat.z = quat.z();
+
+  geometry_msgs::TransformStamped odom_trans;
+  odom_trans.header.stamp = stamp;
+  odom_trans.header.frame_id = frame_id;
+  odom_trans.child_frame_id = child_frame_id;
+
+  odom_trans.transform.translation.x = pose(0, 3);
+  odom_trans.transform.translation.y = pose(1, 3);
+  odom_trans.transform.translation.z = pose(2, 3);
+  odom_trans.transform.rotation = odom_quat;
+
+  return odom_trans;
+}
+
 static Eigen::Isometry3d pose2isometry(const geometry_msgs::Pose& pose) {
   Eigen::Isometry3d mat = Eigen::Isometry3d::Identity();
   mat.translation() = Eigen::Vector3d(pose.position.x, pose.position.y, pose.position.z);
@@ -88,32 +118,48 @@ static Eigen::Isometry3d odom2isometry(const nav_msgs::OdometryConstPtr& odom_ms
   return isometry;
 }
 
-static Eigen::Isometry2d pose2isometry2d(Eigen::Quaterniond quat, Eigen::Vector3d pos) {
+static double quatToAngle(Eigen::Quaterniond quat) {
   Eigen::AngleAxisd aa = Eigen::AngleAxisd(quat);
   double angle = 0.0;
   if(aa.axis()(2) > 0)  
     angle = aa.angle();
   else
     angle = -aa.angle();
-  Eigen::Rotation2D<double> rot(angle);
 
-  Eigen::Isometry2d iso = Eigen::Isometry2d::Identity();
-  iso.linear() = rot.toRotationMatrix();
-  iso.translation() = pos.block<2,1>(0,0);
+  //std::cout << "angle: " << aa.angle() << "\naxis: " << aa.axis() << std::endl; 
+  return angle;
 }
 
-static Eigen::Isometry2d pose2isometry2d(Eigen::Matrix3d rot_mat, Eigen::Vector3d pos) {
+static double rotToAngle(Eigen::Matrix3d rot_mat) {
   Eigen::AngleAxisd aa = Eigen::AngleAxisd(rot_mat);
   double angle = 0.0;
   if(aa.axis()(2) > 0)  
     angle = aa.angle();
   else
     angle = -aa.angle();
+
+  //std::cout << "angle: " << aa.angle() << "\naxis: " << aa.axis() << std::endl; 
+  return angle;
+}
+
+static Eigen::Isometry2d pose2isometry2d(Eigen::Quaterniond quat, Eigen::Vector3d pos) {
+  double angle = quatToAngle(quat);
   Eigen::Rotation2D<double> rot(angle);
 
   Eigen::Isometry2d iso = Eigen::Isometry2d::Identity();
   iso.linear() = rot.toRotationMatrix();
   iso.translation() = pos.block<2,1>(0,0);
+  return iso;
+}
+
+static Eigen::Isometry2d pose2isometry2d(Eigen::Matrix3d rot_mat, Eigen::Vector3d pos) {
+  double angle = rotToAngle(rot_mat);
+  Eigen::Rotation2D<double> rot(angle);
+
+  Eigen::Isometry2d iso = Eigen::Isometry2d::Identity();
+  iso.linear() = rot.toRotationMatrix();
+  iso.translation() = pos.block<2,1>(0,0);
+  return iso;
 }
 
 static Eigen::Isometry2d odom2isometry2d(const nav_msgs::OdometryConstPtr& odom_msg) {

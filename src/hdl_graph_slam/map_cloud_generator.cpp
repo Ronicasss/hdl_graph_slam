@@ -20,10 +20,10 @@ pcl::PointCloud<MapCloudGenerator::PointT>::Ptr MapCloudGenerator::generate(cons
   cloud->reserve(keyframes.front()->cloud->size() * keyframes.size());
 
   for(const auto& keyframe : keyframes) {
-    Eigen::Matrix4f pose = keyframe->pose.matrix().cast<float>();
+    Eigen::Matrix3f pose = keyframe->pose.matrix().cast<float>();
     for(const auto& src_pt : keyframe->cloud->points) {
       PointT dst_pt;
-      dst_pt.getVector4fMap() = pose * src_pt.getVector4fMap();
+      dst_pt.getVector3fMap() = pose * src_pt.getVector3fMap();
       dst_pt.intensity = src_pt.intensity;
       cloud->push_back(dst_pt);
     }

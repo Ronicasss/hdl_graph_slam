@@ -24,32 +24,32 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef KKL_G2O_EDGE_SE3_PRIORXYZ_HPP
-#define KKL_G2O_EDGE_SE3_PRIORXYZ_HPP
+#ifndef EDGE_SE2_PRIORXY_HPP
+#define EDGE_SE2_PRIORXY_HPP
 
-#include <g2o/types/slam3d/types_slam3d.h>
-#include <g2o/types/slam3d_addons/types_slam3d_addons.h>
+#include <g2o/types/slam2d/types_slam2d.h>
+#include <g2o/types/slam2d_addons/types_slam2d_addons.h>
 
 namespace g2o {
-class EdgeSE3PriorXYZ : public g2o::BaseUnaryEdge<3, Eigen::Vector3d, g2o::VertexSE3> {
+class EdgeSE2PriorXY : public g2o::BaseUnaryEdge<2, Eigen::Vector2d, g2o::VertexSE2> {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  EdgeSE3PriorXYZ() : g2o::BaseUnaryEdge<3, Eigen::Vector3d, g2o::VertexSE3>() {}
+  EdgeSE2PriorXY() : g2o::BaseUnaryEdge<2, Eigen::Vector2d, g2o::VertexSE2>() {}
 
   void computeError() override {
-    const g2o::VertexSE3* v1 = static_cast<const g2o::VertexSE3*>(_vertices[0]);
+    const g2o::VertexSE2* v1 = static_cast<const g2o::VertexSE2*>(_vertices[0]);
 
-    Eigen::Vector3d estimate = v1->estimate().translation();
+    Eigen::Vector2d estimate = v1->estimate().translation();
     _error = estimate - _measurement;
   }
 
-  void setMeasurement(const Eigen::Vector3d& m) override {
+  void setMeasurement(const Eigen::Vector2d& m) override {
     _measurement = m;
   }
 
   virtual bool read(std::istream& is) override {
-    Eigen::Vector3d v;
-    is >> v(0) >> v(1) >> v(2);
+    Eigen::Vector2d v;
+    is >> v(0) >> v(1);
     setMeasurement(v);
     for(int i = 0; i < information().rows(); ++i)
       for(int j = i; j < information().cols(); ++j) {
@@ -59,8 +59,8 @@ public:
     return true;
   }
   virtual bool write(std::ostream& os) const override {
-    Eigen::Vector3d v = _measurement;
-    os << v(0) << " " << v(1) << " " << v(2) << " ";
+    Eigen::Vector2d v = _measurement;
+    os << v(0) << " " << v(1) << " ";
     for(int i = 0; i < information().rows(); ++i)
       for(int j = i; j < information().cols(); ++j) os << " " << information()(i, j);
     return os.good();
@@ -68,4 +68,4 @@ public:
 };
 }  // namespace g2o
 
-#endif
+#endif  // EDGE_SE3_PRIORXY_HPP

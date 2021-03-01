@@ -24,38 +24,39 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef KKL_G2O_EDGE_SE3_PRIORVEC_HPP
-#define KKL_G2O_EDGE_SE3_PRIORVEC_HPP
+#ifndef KKL_G2O_EDGE_SE2_PRIORQUAT_HPP
+#define KKL_G2O_EDGE_SE2_PRIORQUAT_HPP
 
-#include <g2o/types/slam3d/types_slam3d.h>
-#include <g2o/types/slam3d_addons/types_slam3d_addons.h>
+#include <g2o/types/slam2d/types_slam2d.h>
+#include <g2o/types/slam2d_addons/types_slam2d_addons.h>
 
 namespace g2o {
-class EdgeSE3PriorVec : public g2o::BaseUnaryEdge<3, Eigen::Matrix<double, 6, 1>, g2o::VertexSE3> {
+class EdgeSE2PriorQuat : public g2o::BaseUnaryEdge<1, Eigen::Rotation2D<double>, g2o::VertexSE2> {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  EdgeSE3PriorVec() : g2o::BaseUnaryEdge<3, Eigen::Matrix<double, 6, 1>, g2o::VertexSE3>() {}
+  EdgeSE2PriorQuat() : g2o::BaseUnaryEdge<1, Eigen::Rotation2D<double>, g2o::VertexSE2>() {}
 
   void computeError() override {
-    const g2o::VertexSE3* v1 = static_cast<const g2o::VertexSE3*>(_vertices[0]);
+    const g2o::VertexSE2* v1 = static_cast<const g2o::VertexSE2*>(_vertices[0]);
 
-    Eigen::Vector3d direction = _measurement.head<3>();
-    Eigen::Vector3d measurement = _measurement.tail<3>();
+    Eigen::Rotation2D<double> estimate = v1->estimate().rotation();
 
-    Eigen::Vector3d estimate = (v1->estimate().linear().inverse() * direction);
-
-    _error = estimate - measurement;
+    _error(0,0) = estimate.angle() - _measurement.angle();
   }
 
-  void setMeasurement(const Eigen::Matrix<double, 6, 1>& m) override {
-    _measurement.head<3>() = m.head<3>().normalized();
-    _measurement.tail<3>() = m.tail<3>().normalized();
+  void setMeasurement(const Eigen::Rotation2D<double>& m) override {
+    _measurement = m;
   }
 
   virtual bool read(std::istream& is) override {
-    Eigen::Matrix<double, 6, 1> v;
-    is >> v[0] >> v[1] >> v[2] >> v[3] >> v[4] >> v[5];
-    setMeasurement(v);
+    Eigen::Matrix2d rot;
+    for(int i = 0; i < 2; i++) {
+      for(int j = 0; j < 2; j++) {
+        is >> rot(i, j);
+      }
+    }
+    setMeasurement(Eigen::Rotation2D<double>(rot));
+
     for(int i = 0; i < information().rows(); ++i)
       for(int j = i; j < information().cols(); ++j) {
         is >> information()(i, j);
@@ -64,8 +65,8 @@ public:
     return true;
   }
   virtual bool write(std::ostream& os) const override {
-    Eigen::Matrix<double, 6, 1> v = _measurement;
-    os << v[0] << " " << v[1] << " " << v[2] << " " << v[3] << " " << v[4] << " " << v[5];
+    Eigen::Rotation2D<double> rot = _measurement;
+    os << rot.toRotationMatrix();
     for(int i = 0; i < information().rows(); ++i)
       for(int j = i; j < information().cols(); ++j) os << " " << information()(i, j);
     return os.good();

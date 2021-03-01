@@ -43,6 +43,12 @@ public:
     Eigen::Isometry2d delta = prev_keypose.inverse() * pose;
     double dx = delta.translation().norm();
     double da = Eigen::Rotation2D<double>(delta.linear()).angle();
+    //std::cout << "prev_keypose: " << prev_keypose.matrix() << std::endl;
+    //std::cout << "pose: " << pose.matrix() << std::endl;
+    //std::cout << "delta: " << delta.matrix() << std::endl;
+
+    //std::cout << "dx: " << dx << " thresh: " << keyframe_delta_trans << std::endl;
+    //std::cout << "da: " << da << " thresh: " << keyframe_delta_angle << std::endl;
 
     // too close to the previous frame
     if(dx < keyframe_delta_trans && da < keyframe_delta_angle) {
