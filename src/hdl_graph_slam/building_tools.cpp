@@ -163,14 +163,14 @@ namespace hdl_graph_slam {
 		return pc_temp;
 	}
 
-	std::string BuildingTools::downloadBuildings(double lat, double lon, double rad) {
+	std::string BuildingTools::downloadBuildings(double lat, double lon, double rad, std::string host) {
 		std::string result;
 		try {
-			std::string url = "https://overpass.openstreetmap.ru/api/interpreter?data=way[%27building%27](around:" + std::to_string(rad) + "," + std::to_string(lat) + "," + std::to_string(lon) + ");%20(._;%3E;);out;";
+			//std::string url = "https://overpass.openstreetmap.ru/api/interpreter?data=way[%27building%27](around:" + std::to_string(rad) + "," + std::to_string(lat) + "," + std::to_string(lon) + ");%20(._;%3E;);out;";
 			
 			//std::string url = "https://overpass.nchc.org.tw/api/interpreter?data=way[%27building%27](around:" + std::to_string(rad) + "," + std::to_string(lat) + "," + std::to_string(lon) + ");%20(._;%3E;);out;";
-			 
-			//std::string url = "overpass-api.de/api/interpreter?data=way[%27building%27](around:" + std::to_string(rad) + "," + std::to_string(lat) + "," + std::to_string(lon) + ");%20(._;%3E;);out;";
+			
+			std::string url = host + "/api/interpreter?data=way[%27building%27](around:" + std::to_string(rad) + "," + std::to_string(lat) + "," + std::to_string(lon) + ");%20(._;%3E;);out;";
 	        //std::string url = "https://fleet.ls.hereapi.com/1/search/proximity.json?key_attributes=BUILDING_ID&proximity=" + std::to_string(lat) + "," + std::to_string(lon) + "," + std::to_string(rad) + "&layer_ids=BUILDING&apiKey=C0LqxwuV0lzyiXA6WKEB84h8f8AHK4EMLum1cGGIGI8";
 	        std::cout << url << std::endl;
 	        curlpp::Cleanup cleaner;
@@ -209,8 +209,8 @@ namespace hdl_graph_slam {
     	return PointT3((pt_utm.easting-zero_utm(0)), (pt_utm.northing-zero_utm(1)), 0);
 	}
 
-	std::vector<Building> BuildingTools::getBuildings(double lat, double lon, double rad, Eigen::Vector2d zero_utm){
-		std::string result = downloadBuildings(lat, lon, rad);
+	std::vector<Building> BuildingTools::getBuildings(double lat, double lon, double rad, Eigen::Vector2d zero_utm, std::string host){
+		std::string result = downloadBuildings(lat, lon, rad, host);
 		//std::cout << "Result: " << result << std::endl;
 		Eigen::Vector3d v;
 		v.block<2,1>(0,0) = zero_utm;

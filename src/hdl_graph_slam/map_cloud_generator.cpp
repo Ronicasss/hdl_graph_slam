@@ -10,6 +10,13 @@ MapCloudGenerator::MapCloudGenerator() {}
 
 MapCloudGenerator::~MapCloudGenerator() {}
 
+static Eigen::Matrix4f matrix3fto4f(Eigen::Matrix3f m3f) {
+  Eigen::Matrix4f m4f = Eigen::Matrix4f::Identity();
+  m4f.block<2,2>(0,0) = m3f.block<2,2>(0,0);
+  m4f.block<2,1>(0,3) = m3f.block<2,1>(0,2);
+  return m4f;
+} 
+
 pcl::PointCloud<MapCloudGenerator::PointT>::Ptr MapCloudGenerator::generate(const std::vector<KeyFrameSnapshot::Ptr>& keyframes, double resolution) const {
   if(keyframes.empty()) {
     std::cerr << "warning: keyframes empty!!" << std::endl;
@@ -20,10 +27,10 @@ pcl::PointCloud<MapCloudGenerator::PointT>::Ptr MapCloudGenerator::generate(cons
   cloud->reserve(keyframes.front()->cloud->size() * keyframes.size());
 
   for(const auto& keyframe : keyframes) {
-    Eigen::Matrix3f pose = keyframe->pose.matrix().cast<float>();
+    Eigen::Matrix4f pose = matrix3fto4f(keyframe->pose.matrix().cast<float>());
     for(const auto& src_pt : keyframe->cloud->points) {
       PointT dst_pt;
-      dst_pt.getVector3fMap() = pose * src_pt.getVector3fMap();
+      dst_pt.getVector4fMap() = pose * src_pt.getVector4fMap();
       dst_pt.intensity = src_pt.intensity;
       cloud->push_back(dst_pt);
     }

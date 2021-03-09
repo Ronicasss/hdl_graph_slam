@@ -113,6 +113,7 @@ public:
     gt_markers_pub = mt_nh.advertise<visualization_msgs::Marker>("/hdl_graph_slam/gt_markers", 16);
     first_guess = true;
     prev_guess = Eigen::Matrix4f::Identity();
+    fix_first_building = true;
 
     //
     anchor_node = nullptr;
@@ -193,7 +194,6 @@ private:
         read_until.frame_id = "/filtered_points";
         read_until_pub.publish(read_until);
       }
-      std::cout << "ku is failing" << std::endl;
       return;
     }
 
@@ -242,7 +242,7 @@ private:
             sst >> stddev;
             inf(i, i) = 1.0 / stddev;
           }
-
+          std::cout << "fixed first keyframe" << std::endl;
           anchor_node = graph_slam->add_se2_node(Eigen::Isometry2d::Identity());
           anchor_node->setFixed(true);
           anchor_edge = graph_slam->add_se2_edge(anchor_node, keyframe->node, Eigen::Isometry2d::Identity(), inf);
@@ -318,7 +318,7 @@ private:
    */
   bool flush_gps_queue() {
     std::lock_guard<std::mutex> lock(gps_queue_mutex);
-    std::cout << "gps queue" << std::endl;
+    //std::cout << "gps queue" << std::endl;
 
     if(keyframes.empty() || gps_queue.empty()) {
       return false;
@@ -372,7 +372,6 @@ private:
       keyframe->utm_band = utm.band;
 
       if(private_nh.param<bool>("test_enable_gps_imu", true)) {
-        std::cout << "adding gps" << std::endl;
         g2o::OptimizableGraph::Edge* edge;
         
         Eigen::Matrix2d information_matrix = Eigen::Matrix2d::Identity() / gps_edge_stddev_xy;
@@ -386,7 +385,7 @@ private:
 
     auto remove_loc = std::upper_bound(gps_queue.begin(), gps_queue.end(), keyframes.back()->stamp, [=](const ros::Time& stamp, const geographic_msgs::GeoPointStampedConstPtr& geopoint) { return stamp < geopoint->header.stamp; });
     gps_queue.erase(gps_queue.begin(), remove_loc);
-    std::cout << "gps updated: " << updated << std::endl;
+    //std::cout << "gps updated: " << updated << std::endl;
     return updated;
   }
 
@@ -401,7 +400,7 @@ private:
   }
 
   bool flush_imu_queue() {
-    std::cout << "imu queue" << std::endl;
+    //std::cout << "imu queue" << std::endl;
     std::lock_guard<std::mutex> lock(imu_queue_mutex);
     if(keyframes.empty() || imu_queue.empty() || base_frame_id.empty()) {
       return false;
@@ -460,9 +459,9 @@ private:
       keyframe->acceleration = Eigen::Vector2d(acc_base.vector.x, acc_base.vector.y);
       keyframe->orientation = Eigen::Rotation2D<double>(quatToAngle(Eigen::Quaterniond(quat_base.quaternion.w, quat_base.quaternion.x, quat_base.quaternion.y, quat_base.quaternion.z)));
       
+       
       if(private_nh.param<bool>("test_enable_gps_imu", true)) {
         if(enable_imu_orientation) {
-          std::cout << "adding imu" << std::endl;
           Eigen::MatrixXd info = Eigen::MatrixXd::Identity(3, 3) / imu_orientation_edge_stddev;
           auto edge = graph_slam->add_se2_prior_quat_edge(keyframe->node, *keyframe->orientation, info);
           graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("imu_orientation_edge_robust_kernel", "NONE"), private_nh.param<double>("imu_orientation_edge_robust_kernel_size", 1.0));
@@ -474,22 +473,117 @@ private:
 
     auto remove_loc = std::upper_bound(imu_queue.begin(), imu_queue.end(), keyframes.back()->stamp, [=](const ros::Time& stamp, const sensor_msgs::ImuConstPtr& imu) { return stamp < imu->header.stamp; });
     imu_queue.erase(imu_queue.begin(), remove_loc);
-    std::cout << "imu updated: " << updated << std::endl;
+    //std::cout << "imu updated: " << updated << std::endl;
     return updated;
   }
 
   bool update_buildings_nodes() {
     bool b_updated = false;
-    std::cout << "update_buildings_nodes" << std::endl;
+    bool new_kf = false;
     if(enter) {
       for(auto& keyframe : keyframes) {
         // if the keyframe is never been aligned with map
         if(!keyframe->buildings_check && keyframe->index != 0) {
+          new_kf = true;
+          std::cout << "update_buildings_nodes" << std::endl;
           if(first_guess && !keyframe->utm_coord) {
             continue; 
           }
           keyframe->buildings_check = true;
           //enter = 0;
+          /***************************************************************************************/
+          // pre-processing on odom cloud
+          pcl::PointCloud<PointT3>::Ptr odomCloud(new pcl::PointCloud<PointT3>); // cloud containing lidar data
+          pcl::PointCloud<PointT3>::Ptr temp_cloud(new pcl::PointCloud<PointT3>);
+          pcl::PointCloud<PointT3>::Ptr temp_cloud_2(new pcl::PointCloud<PointT3>);
+          pcl::PointCloud<PointT3>::Ptr temp_cloud_3(new pcl::PointCloud<PointT3>);
+          pcl::PointCloud<PointT3>::Ptr temp_cloud_4(new pcl::PointCloud<PointT3>);
+          pcl::PointCloud<PointT3>::Ptr temp_cloud_5(new pcl::PointCloud<PointT3>);
+          pcl::copyPointCloud(*keyframe->cloud,*temp_cloud); // convert from pointxyzi to pointxyz
+
+          //std::cout << "size 1: " << temp_cloud->size() << std::endl; 
+          // height filtering
+          pcl::PassThrough<PointT3> pass;
+          pass.setInputCloud (temp_cloud);
+          pass.setFilterFieldName ("z");
+          pass.setFilterLimits (ground_floor_max_thresh, 100.0);
+          pass.filter(*temp_cloud_2);
+          temp_cloud_2->header = (*keyframe->cloud).header;
+          //std::cout << "size 2: " << temp_cloud_2->size() << std::endl;
+          // downsampling
+          pcl::Filter<PointT3>::Ptr downsample_filter;
+          double downsample_resolution = private_nh.param<double>("downsample_resolution", 0.1);
+          boost::shared_ptr<pcl::VoxelGrid<PointT3>> voxelgrid(new pcl::VoxelGrid<PointT3>());
+          voxelgrid->setLeafSize(downsample_resolution, downsample_resolution, downsample_resolution);
+          downsample_filter = voxelgrid;
+          downsample_filter->setInputCloud(temp_cloud_2);
+          downsample_filter->filter(*temp_cloud_3);
+          temp_cloud_3->header = temp_cloud_2->header;
+          //std::cout << "size 3: " << temp_cloud_3->size() << std::endl;
+          // outlier removal
+          pcl::RadiusOutlierRemoval<PointT3>::Ptr rad(new pcl::RadiusOutlierRemoval<PointT3>());
+          rad->setRadiusSearch(radius_search);
+          rad->setMinNeighborsInRadius(min_neighbors_in_radius);
+          //std::cout << "rad: " << rad->getRadiusSearch() << " neighbors: " << rad->getMinNeighborsInRadius() << std::endl; 
+          rad->setInputCloud(temp_cloud_3);
+          rad->filter(*temp_cloud_4);
+          temp_cloud_4->header = temp_cloud_3->header;
+  
+          // project the cloud on plane z=0
+          pcl::ProjectInliers<PointT3> proj;
+          pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+          coefficients->values.resize(4);
+          coefficients->values[0]=0;
+          coefficients->values[1]=0;
+          coefficients->values[2]=1;
+          coefficients->values[3]=0; 
+          proj.setModelType(pcl::SACMODEL_PLANE); 
+          proj.setInputCloud (temp_cloud_4);
+          proj.setModelCoefficients (coefficients);
+          proj.filter (*temp_cloud_5);
+          temp_cloud_5->header = temp_cloud_4->header;
+          
+          pcl::transformPointCloud(*temp_cloud_5, *odomCloud, isometry2dto3d(keyframe->odom).matrix());
+          odomCloud->header = temp_cloud_5->header;
+          odomCloud->header.frame_id = "base_link";
+          
+           // publish original odom cloud
+          sensor_msgs::PointCloud2Ptr oc_cloud_msg(new sensor_msgs::PointCloud2());
+          pcl::toROSMsg(*keyframe->cloud, *oc_cloud_msg);
+          oc_cloud_msg->header.frame_id = "base_link";
+          oc_cloud_msg->header.stamp = keyframe->stamp;
+          original_odom_pub.publish(oc_cloud_msg);
+          // publish odom cloud
+          sensor_msgs::PointCloud2Ptr o_cloud_msg(new sensor_msgs::PointCloud2());
+          pcl::toROSMsg(*odomCloud, *o_cloud_msg);
+          o_cloud_msg->header.frame_id = "odom";
+          o_cloud_msg->header.stamp = keyframe->stamp;
+          odom_pub.publish(o_cloud_msg);
+          /***************************************************************************************/
+          Eigen::Vector4f c;
+          pcl::compute3DCentroid(*odomCloud, c);
+          pcl::PointXYZ cpcl;
+          cpcl.x = c(0);
+          cpcl.y = c(1);
+          cpcl.z = c(2);
+          double sum = 0.0;
+          for(int i = 0; i < odomCloud->size(); i++) {
+            pcl::PointXYZ ptemp = odomCloud->at(i);
+            double dist = pcl::euclideanDistance(cpcl, ptemp);
+            sum += dist;
+          }
+          Eigen::Matrix<double, 3, 3> covariance_matrix; 
+          Eigen::Matrix<double, 4, 1> centroid;
+          pcl::computeMeanAndCovarianceMatrix(*odomCloud, covariance_matrix, centroid);
+          
+          //std::cout << "centroid 1: " << c << std::endl;
+          //std::cout << "centroid 2: " << centroid << std::endl;
+
+          double dist = (sum/(odomCloud->size()));
+          
+          //lidar_range = 10;
+          std::cout << "lidar range: " << lidar_range << std::endl;
+          /***************************************************************************************/  
           
           Eigen::Vector2d e_utm_coord = Eigen::Vector2d::Zero();
           int zone = 0;
@@ -517,7 +611,7 @@ private:
           geographic_msgs::GeoPoint lla = geodesy::toMsg(utm); // convert from utm to lla
 
           // download and parse buildings
-          std::vector<Building> new_buildings = BuildingTools::getBuildings(lla.latitude, lla.longitude, lidar_range, e_zero_utm);
+          std::vector<Building> new_buildings = BuildingTools::getBuildings(lla.latitude, lla.longitude, lidar_range, e_zero_utm, private_nh.param<std::string>("buildings_host", "https://overpass-api.de"));
           if(new_buildings.size() > 0) {
             std::cout << "We found buildings! " << keyframe->index << std::endl;
             b_updated = true;
@@ -525,8 +619,7 @@ private:
             std::vector<BuildingNode::Ptr> bnodes; // vector containing all buildings nodes for current kf (new and not new)
             // buildingsCloud is the cloud containing all buildings
             pcl::PointCloud<PointT3>::Ptr buildingsCloud(new pcl::PointCloud<PointT3>);
-            bool first_b = first_guess; // used to fix first building node
-
+           
             // construct building nodes
             for(auto it2 = new_buildings.begin(); it2 != new_buildings.end(); it2++)
             {
@@ -549,12 +642,27 @@ private:
                 A.translation() = T;
                 // set the node
                 bt->node = graph_slam->add_se2_node(A); 
-                if(first_b) {
+                if(fix_first_building) {
                   if(private_nh.param<bool>("fix_first_building", true)) {
                     std::cout << "fixed building!" << std::endl;
-                    bt->node->setFixed(true);
+                    //bt->node->setFixed(true);
+                    //keyframe->node->setFixed(true);
+
+                    /*********************************************************************/
+                    Eigen::MatrixXd info = Eigen::MatrixXd::Identity(3, 3) / imu_orientation_edge_stddev;
+                    auto edge = graph_slam->add_se2_prior_quat_edge(keyframe->node, *keyframe->orientation, info);
+                    graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("imu_orientation_edge_robust_kernel", "NONE"), private_nh.param<double>("imu_orientation_edge_robust_kernel_size", 1.0));
+                    
+                    g2o::OptimizableGraph::Edge* edge2;
+        
+                    Eigen::Matrix2d information_matrix = Eigen::Matrix2d::Identity() / gps_edge_stddev_xy;
+                    edge2 = graph_slam->add_se2_prior_xy_edge(keyframe->node, *keyframe->utm_coord, information_matrix);
+                    
+                    graph_slam->add_robust_kernel(edge2, private_nh.param<std::string>("gps_edge_robust_kernel", "NONE"), private_nh.param<double>("gps_edge_robust_kernel_size", 1.0));
+                    
+                    /************************************************************************/
                   }
-                  first_b = false;
+                  fix_first_building = false;
                 }
               
                 //std::cout << "id: " << bt->building.id << " est: " << bt->node->estimate().translation() << std::endl;
@@ -566,74 +674,7 @@ private:
               }
             }
             
-            // pre-processing on odom cloud
-            pcl::PointCloud<PointT3>::Ptr odomCloud(new pcl::PointCloud<PointT3>); // cloud containing lidar data
-            pcl::PointCloud<PointT3>::Ptr temp_cloud(new pcl::PointCloud<PointT3>);
-            pcl::PointCloud<PointT3>::Ptr temp_cloud_2(new pcl::PointCloud<PointT3>);
-            pcl::PointCloud<PointT3>::Ptr temp_cloud_3(new pcl::PointCloud<PointT3>);
-            pcl::PointCloud<PointT3>::Ptr temp_cloud_4(new pcl::PointCloud<PointT3>);
-            pcl::PointCloud<PointT3>::Ptr temp_cloud_5(new pcl::PointCloud<PointT3>);
-            pcl::copyPointCloud(*keyframe->cloud,*temp_cloud); // convert from pointxyzi to pointxyz
-
-            //std::cout << "size 1: " << temp_cloud->size() << std::endl; 
-            // height filtering
-            pcl::PassThrough<PointT3> pass;
-            pass.setInputCloud (temp_cloud);
-            pass.setFilterFieldName ("z");
-            pass.setFilterLimits (ground_floor_max_thresh, 100.0);
-            pass.filter(*temp_cloud_2);
-            temp_cloud_2->header = (*keyframe->cloud).header;
-            //std::cout << "size 2: " << temp_cloud_2->size() << std::endl;
-            // downsampling
-            pcl::Filter<PointT3>::Ptr downsample_filter;
-            double downsample_resolution = private_nh.param<double>("downsample_resolution", 0.1);
-            boost::shared_ptr<pcl::VoxelGrid<PointT3>> voxelgrid(new pcl::VoxelGrid<PointT3>());
-            voxelgrid->setLeafSize(downsample_resolution, downsample_resolution, downsample_resolution);
-            downsample_filter = voxelgrid;
-            downsample_filter->setInputCloud(temp_cloud_2);
-            downsample_filter->filter(*temp_cloud_3);
-            temp_cloud_3->header = temp_cloud_2->header;
-            //std::cout << "size 3: " << temp_cloud_3->size() << std::endl;
-            // outlier removal
-            pcl::RadiusOutlierRemoval<PointT3>::Ptr rad(new pcl::RadiusOutlierRemoval<PointT3>());
-            rad->setRadiusSearch(radius_search);
-            rad->setMinNeighborsInRadius(min_neighbors_in_radius);
-            //std::cout << "rad: " << rad->getRadiusSearch() << " neighbors: " << rad->getMinNeighborsInRadius() << std::endl; 
-            rad->setInputCloud(temp_cloud_3);
-            rad->filter(*temp_cloud_4);
-            temp_cloud_4->header = temp_cloud_3->header;
-    
-            // project the cloud on plane z=0
-            pcl::ProjectInliers<PointT3> proj;
-            pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
-            coefficients->values.resize(4);
-            coefficients->values[0]=0;
-            coefficients->values[1]=0;
-            coefficients->values[2]=1;
-            coefficients->values[3]=0; 
-            proj.setModelType(pcl::SACMODEL_PLANE); 
-            proj.setInputCloud (temp_cloud_4);
-            proj.setModelCoefficients (coefficients);
-            proj.filter (*temp_cloud_5);
-            temp_cloud_5->header = temp_cloud_4->header;
-            
-            pcl::transformPointCloud(*temp_cloud_5, *odomCloud, isometry2dto3d(keyframe->odom).matrix());
-            odomCloud->header = temp_cloud_5->header;
-            odomCloud->header.frame_id = "odom";
             buildingsCloud->header.frame_id = "map";
-            
-             // publish original odom cloud
-            sensor_msgs::PointCloud2Ptr oc_cloud_msg(new sensor_msgs::PointCloud2());
-            pcl::toROSMsg(*keyframe->cloud, *oc_cloud_msg);
-            oc_cloud_msg->header.frame_id = "base_link";
-            oc_cloud_msg->header.stamp = keyframe->stamp;
-            original_odom_pub.publish(oc_cloud_msg);
-            // publish odom cloud
-            sensor_msgs::PointCloud2Ptr o_cloud_msg(new sensor_msgs::PointCloud2());
-            pcl::toROSMsg(*odomCloud, *o_cloud_msg);
-            o_cloud_msg->header.frame_id = "odom";
-            o_cloud_msg->header.stamp = keyframe->stamp;
-            odom_pub.publish(o_cloud_msg);
             // publish buildings cloud
             sensor_msgs::PointCloud2Ptr b_cloud_msg(new sensor_msgs::PointCloud2());
             pcl::toROSMsg(*buildingsCloud, *b_cloud_msg);
@@ -657,36 +698,36 @@ private:
             // gicp_omp registration
             pcl::Registration<PointT3, PointT3>::Ptr registration;
 
-            //pcl::registration::WarpPointRigid3D<PointT3, PointT3>::Ptr warp_fcn(new pcl::registration::WarpPointRigid3D<PointT3,PointT3>);
-            //pcl::registration::TransformationEstimationLM<PointT3, PointT3>::Ptr te(new pcl::registration::TransformationEstimationLM<PointT3, PointT3>);
-            //te->setWarpFunction(warp_fcn);
+            pcl::registration::WarpPointRigid3D<PointT3, PointT3>::Ptr warp_fcn(new pcl::registration::WarpPointRigid3D<PointT3,PointT3>);
+            pcl::registration::TransformationEstimationLM<PointT3, PointT3>::Ptr te(new pcl::registration::TransformationEstimationLM<PointT3, PointT3>);
+            te->setWarpFunction(warp_fcn);
 
-            std::cout << "registration: FAST_VGICP" << std::endl;
+            /*std::cout << "registration: FAST_VGICP" << std::endl;
             boost::shared_ptr<fast_gicp::FastVGICP<PointT3, PointT3>> gicp(new fast_gicp::FastVGICP<PointT3, PointT3>());
             gicp->setNumThreads(private_nh.param<int>("gicp_reg_num_threads", 0));
             if(keyframe->index >= (private_nh.param<int>("gicp_init_res_kf_thresh", 35)))
               gicp->setResolution(private_nh.param<double>("gicp_reg_resolution", 1.0));
             else
-              gicp->setResolution(private_nh.param<double>("gicp_initial_reg_resolution", 2.0));
+              gicp->setResolution(private_nh.param<double>("gicp_initial_reg_resolution", 2.0));*/
             
             
             //std::cout << "registration: FAST_GICP" << std::endl;
             //boost::shared_ptr<fast_gicp::FastGICP<PointT3, PointT3>> gicp(new fast_gicp::FastGICP<PointT3, PointT3>());
             //gicp->setNumThreads(private_nh.param<int>("reg_num_threads", 0));
 
-            //std::cout << "registration: GICP_OMP" << std::endl;
-            //boost::shared_ptr<pclomp::GeneralizedIterativeClosestPoint<PointT3, PointT3>> gicp(new pclomp::GeneralizedIterativeClosestPoint<PointT3, PointT3>());
-            
+            std::cout << "registration: GICP_OMP" << std::endl;
+            boost::shared_ptr<pclomp::GeneralizedIterativeClosestPoint<PointT3, PointT3>> gicp(new pclomp::GeneralizedIterativeClosestPoint<PointT3, PointT3>());
+
             if(private_nh.param<bool>("enable_transformation_epsilon", true))
               gicp->setTransformationEpsilon(private_nh.param<double>("transformation_epsilon", 0.01));
             if(private_nh.param<bool>("enable_maximum_iterations", true))
               gicp->setMaximumIterations(private_nh.param<int>("maximum_iterations", 64));
             if(private_nh.param<bool>("enable_use_reciprocal_correspondences", true))
-              //gicp->setUseReciprocalCorrespondences(private_nh.param<bool>("use_reciprocal_correspondences", false));
+              gicp->setUseReciprocalCorrespondences(private_nh.param<bool>("use_reciprocal_correspondences", false));
             if(private_nh.param<bool>("enable_gicp_correspondence_randomness", true))
               gicp->setCorrespondenceRandomness(private_nh.param<int>("gicp_correspondence_randomness", 20));
             if(private_nh.param<bool>("enable_gicp_max_optimizer_iterations", true))
-              //gicp->setMaximumOptimizerIterations(private_nh.param<int>("gicp_max_optimizer_iterations", 20));
+              gicp->setMaximumOptimizerIterations(private_nh.param<int>("gicp_max_optimizer_iterations", 20));
 
             if(private_nh.param<bool>("enable_gicp_max_correspondance_distance", false))
               gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance", 0.05));
@@ -695,24 +736,24 @@ private:
             if(private_nh.param<bool>("enable_gicp_ransac_outlier_threshold", false)) 
               gicp->setRANSACOutlierRejectionThreshold(private_nh.param<double>("gicp_ransac_outlier_threshold", 1.5));
 
-            //std::cout << "max dist: " << gicp->getMaxCorrespondenceDistance() << std::endl;
-            //std::cout << "ransac: " << gicp->getRANSACOutlierRejectionThreshold() << std::endl;
-            //std::cout << "fitness: " << gicp->getEuclideanFitnessEpsilon() << std::endl;
+            std::cout << "max dist: " << gicp->getMaxCorrespondenceDistance() << std::endl;
+            std::cout << "ransac: " << gicp->getRANSACOutlierRejectionThreshold() << std::endl;
+            std::cout << "fitness: " << gicp->getEuclideanFitnessEpsilon() << std::endl;
 
             registration = gicp;
-            //registration->setTransformationEstimation(te);
+            registration->setTransformationEstimation(te);
             registration->setInputTarget(buildingsCloud);
             registration->setInputSource(odomCloud);
             pcl::PointCloud<PointT3>::Ptr aligned(new pcl::PointCloud<PointT3>());
             registration->align(*aligned, guess);
-            std::cout << "has converged:" << registration->hasConverged() << " score: " << registration->getFitnessScore(2.0) << std::endl;
+            std::cout << "has converged:" << registration->hasConverged() << " score: " << registration->getFitnessScore() << std::endl;
             Eigen::Matrix4f transformation = registration->getFinalTransformation();
             std::cout<< "Transformation: " << transformation << std::endl;
             prev_guess = transformation;
 
-            /*if(registration->getFitnessScore(2.0) > private_nh.param<double>("guess_thresh", 0.5)) {
-              first_guess = true;
-            }*/
+            //if(registration->getFitnessScore(2.0) > private_nh.param<double>("guess_thresh", 0.5)) {
+            //  first_guess = true;
+            //}
 
             // publish icp resulting transform
             aligned->header.frame_id = "map";
@@ -741,7 +782,9 @@ private:
             }
             std::cout << "buildings inf: " << information_matrix << std::endl;
 
-            //auto edge = graph_slam->add_se3_edge_prior(keyframe->node, t_s_bs_iso*(keyframe->odom), information_matrix);
+            Eigen::Isometry2d t_s_bs_iso = Eigen::Isometry2d::Identity();
+            t_s_bs_iso.matrix() = t_s_bs;
+            //auto edge = graph_slam->add_se2_edge_prior(keyframe->node, t_s_bs_iso*(keyframe->odom), information_matrix);
             //graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
 
             // t_s_bs in map frame
@@ -786,7 +829,13 @@ private:
         } 
       }
     }
-    std::cout << "b_updated: " << b_updated << std::endl;
+
+    // if there are new keyframes, but all of them do not have buildings (b_updated = false) 
+    // then re-initialize the first guess for next keyframe that will have buildings
+    if(new_kf && !b_updated) {
+      std::cout << "RE-INITIATE INITIAL GUESS!!!!!!!!!!!!!" << std::endl;
+      first_guess = true;
+    }
     return b_updated;
   }
 
@@ -801,8 +850,8 @@ private:
     return nullptr;
   }
 
-  std::vector<Eigen::Matrix3d> loadPoses(std::string file_name) {
-    std::vector<Eigen::Matrix3d> poses;
+  std::vector<Eigen::Matrix4d> loadPoses(std::string file_name) {
+    std::vector<Eigen::Matrix4d> poses;
     FILE *fp = fopen(file_name.c_str(),"r");
     if (!fp)
       return poses;
@@ -814,7 +863,7 @@ private:
                      &P(2,0), &P(2,1), &P(2,2), &P(2,3) )==12) {
         Eigen::Matrix3d pose_3d = Eigen::Matrix3d::Identity();
         pose_3d = matrix4dto3d(P);
-        poses.push_back(pose_3d);
+        poses.push_back(P);
       }
     }
     fclose(fp);
@@ -872,7 +921,7 @@ private:
 
     //std::cout << "keyframe_updated: " << keyframe_updated << std::endl;
     if(!keyframe_updated & !flush_gps_queue() & !flush_imu_queue() & !update_buildings_nodes()) {
-      std::cout << "no opt!" << std::endl;
+      //std::cout << "no opt!" << std::endl;
       return;
     }
 
@@ -968,30 +1017,29 @@ private:
     tf::quaternionTFToEigen(transform_t.getRotation(), q);
     Eigen::Vector3d v;
     tf::vectorTFToEigen(transform_t.getOrigin(), v);
-    Eigen::Matrix4d base_camera_4d = Eigen::Matrix4d::Identity();
-    base_camera_4d.block<3, 3>(0, 0) = q.normalized().toRotationMatrix();
-    //base_camera_4d.block<3, 1>(0, 3) = v;
-    Eigen::Matrix3d base_camera = matrix4dto3d(base_camera_4d);
+    Eigen::Matrix4d base_camera = Eigen::Matrix4d::Identity();
+    base_camera.block<3, 3>(0, 0) = q.normalized().toRotationMatrix();
+    //base_camera.block<3, 1>(0, 3) = v;
 
     // RPE start
-    Eigen::Matrix3d prev_pose = Eigen::Matrix3d::Identity();
-    Eigen::Matrix3d prev_gt = Eigen::Matrix3d::Identity();
-    std::vector<Eigen::Matrix3d> rpe_poses;
-    std::vector<Eigen::Matrix3d> rpe_gt;
+    Eigen::Matrix4d prev_pose = Eigen::Matrix4d::Identity();
+    Eigen::Matrix4d prev_gt = Eigen::Matrix4d::Identity();
+    std::vector<Eigen::Matrix4d> rpe_poses;
+    std::vector<Eigen::Matrix4d> rpe_gt;
     std::ofstream myfile6;
     myfile6.open ("rpe.txt");
     bool first_enter = true;
     for(int i = 0; i < gt.size(); i++) {
       int pos = getIndexPosition(i);
       if(pos >= 0) {
-        Eigen::Matrix3d pose = keyframes[pos]->node->estimate().toIsometry().matrix();
+        Eigen::Matrix4d pose = isometry2dto3d(keyframes[pos]->node->estimate().toIsometry()).matrix();
         if(!first_enter) {
           rpe_poses.push_back(computeRelativeTrans(prev_pose, ((base_camera.inverse())*pose)));
-          rpe_gt.push_back(computeRelativeTrans(prev_gt, gt[i]));
+          rpe_gt.push_back(computeRelativeTrans(prev_gt, state6to3(gt[i])));
         } 
         first_enter = false;
         prev_pose = (base_camera.inverse())*pose;
-        prev_gt = gt[i];
+        prev_gt = state6to3(gt[i]);
       }
     }
     
@@ -1000,11 +1048,11 @@ private:
     for(int i = 0; i < rpe_poses.size(); i++) {
       //std::cout << "rpe gt " << i << ": " << rpe_gt[i] << std::endl;
       //std::cout << "rpe pose " << i << ": " << rpe_poses[i] << std::endl;
-      Eigen::Matrix3d rpe_delta = computeRelativeTrans(rpe_gt[i], rpe_poses[i]);
+      Eigen::Matrix4d rpe_delta = computeRelativeTrans(rpe_gt[i], rpe_poses[i]);
       //std::cout << "delta gt - pos " << i << ": " << delta << std::endl;
 
-      double t = sqrt((rpe_delta(0,2)*rpe_delta(0,2))+(rpe_delta(1,2)*rpe_delta(1,2)));
-      double angle_temp = (((rpe_delta(0,0) + rpe_delta(1,1))-1)/2);
+      double t = sqrt((rpe_delta(0,3)*rpe_delta(0,3))+(rpe_delta(1,3)*rpe_delta(1,3)));
+      double angle_temp = (((rpe_delta(0,0) + rpe_delta(1,1) + 1)-1)/2);
       if(angle_temp > 1.0)
         angle_temp = 1.0;
       if(angle_temp < -1.0)
@@ -1043,18 +1091,18 @@ private:
       if(index == -1)
         index = 0;
 
-      Eigen::Matrix3d estimate = keyframes[index]->node->estimate().toIsometry().matrix();
+      Eigen::Matrix4d estimate = isometry2dto3d(keyframes[index]->node->estimate().toIsometry()).matrix();
       //std::cout << "estimate: " << estimate.matrix() << std::endl;
       //std::cout << "base camera: " << base_camera.matrix() << std::endl;
-      Eigen::Matrix3d tr = estimate*base_camera;
+      Eigen::Matrix4d tr = estimate*base_camera;
 
       // delta transforms gt to keyframes, used for visualization
-      Eigen::Matrix3d delta = Eigen::Matrix3d::Identity();
+      Eigen::Matrix4d delta = Eigen::Matrix4d::Identity();
       delta = tr * (gt[index].inverse());
       //std::cout << "delta: " << delta << std::endl;
       
       // delta2 transforms keyframes to gt, used for error calculation
-      Eigen::Matrix3d delta_2 = Eigen::Matrix3d::Identity();
+      Eigen::Matrix4d delta_2 = Eigen::Matrix4d::Identity();
       delta_2 = gt[index] * (tr.inverse());
       //std::cout << "delta_2: " << delta_2 << std::endl;
       
@@ -1108,12 +1156,12 @@ private:
         int pos = getIndexPosition(i);
         if(pos >= 0) {
           j++;
-          Eigen::Matrix3d pose = keyframes[pos]->node->estimate().toIsometry().matrix();
-          Eigen::Matrix3d pose_trans = delta_2*pose;
-          Eigen::Matrix3d pose_error = (gt[i].inverse())*pose_trans;
+          Eigen::Matrix4d pose = isometry2dto3d(keyframes[pos]->node->estimate().toIsometry()).matrix();
+          Eigen::Matrix4d pose_trans = delta_2*pose;
+          Eigen::Matrix4d pose_error = (state6to3(gt[i]).inverse())*pose_trans;
 
-          double dx = pose_error(0, 2);
-          double dy = pose_error(1, 2);
+          double dx = pose_error(0, 3);
+          double dy = pose_error(1, 3);
           double dist = sqrt(dx*dx+dy*dy);
           sum += dist;
           sum_sq += (dist*dist);
@@ -1127,7 +1175,7 @@ private:
           std::cout << "to Euler angles: " << ea2 << std::endl;
           Eigen::AngleAxisd newAngleAxis(pose.block<3, 3>(0, 0));
           std::cout << "angle: " << newAngleAxis.angle() << "\naxis: " << newAngleAxis.axis() << std::endl;*/
-          myfile2 << gt[i].format(lineFmt) << std::endl;
+          myfile2 << state6to3(gt[i]).format(lineFmt) << std::endl;
           myfile3 << i << " " << dist << std::endl;
         }  
       }
@@ -1151,8 +1199,8 @@ private:
     /****************************************************************************************/
   }
 
-  Eigen::Matrix3d computeRelativeTrans(Eigen::Matrix3d pose1, Eigen::Matrix3d pose2) {
-    Eigen::Matrix3d delta = (pose1.inverse())*pose2;
+  Eigen::Matrix4d computeRelativeTrans(Eigen::Matrix4d pose1, Eigen::Matrix4d pose2) {
+    Eigen::Matrix4d delta = (pose1.inverse())*pose2;
     return delta;
   }
 
@@ -1253,7 +1301,7 @@ private:
     edge_marker.type = visualization_msgs::Marker::LINE_LIST;
 
     edge_marker.pose.orientation.w = 1.0;
-    edge_marker.scale.x = 0.2;
+    edge_marker.scale.x = 0.09;
 
     edge_marker.points.resize(graph_slam->graph->edges().size() * 2);
     edge_marker.colors.resize(graph_slam->graph->edges().size() * 2);
@@ -1553,11 +1601,12 @@ private:
   double radius_search;
   int min_neighbors_in_radius;
   int ii;
-  std::vector<Eigen::Matrix3d> gt;
+  std::vector<Eigen::Matrix4d> gt;
   ros::Publisher gt_markers_pub;
   bool first_guess;
   Eigen::Matrix4f prev_guess;
   tf::TransformBroadcaster b_tf_broadcaster;
+  bool fix_first_building;
 };
 
 }  // namespace hdl_graph_slam

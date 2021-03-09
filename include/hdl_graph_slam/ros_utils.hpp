@@ -194,9 +194,24 @@ static Eigen::Matrix3d matrix4dto3d(Eigen::Matrix4d m4d) {
   return iso2d.matrix();
 } 
 
+static Eigen::Matrix4d matrix3dto4d(Eigen::Matrix3d m3d) {
+  Eigen::Matrix4d m4d = Eigen::Matrix4d::Identity();
+  m4d.block<2,2>(0,0) = m3d.block<2,2>(0,0);
+  m4d.block<2,1>(0,3) = m3d.block<2,1>(0,2);
+  return m4d;
+} 
+
 static Eigen::Matrix3f matrix4fto3f(Eigen::Matrix4f m4f) {
   Eigen::Isometry2d iso2d = pose2isometry2d(m4f.block<3,3>(0,0).cast<double>(), m4f.block<3,1>(0,3).cast<double>());
   return iso2d.matrix().cast<float>();
+}
+
+static Eigen::Matrix4d state6to3(Eigen::Matrix4d in) {
+  Eigen::Matrix4d out = Eigen::Matrix4d::Identity();
+  Eigen::Isometry2d temp = pose2isometry2d(in.block<3,3>(0,0), in.block<3,1>(0,3));
+  out.block<2,2>(0,0) = temp.linear();
+  out.block<2,1>(0,3) = temp.translation();
+  return out;
 }
 
 }  // namespace hdl_graph_slam

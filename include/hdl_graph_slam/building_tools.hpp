@@ -19,7 +19,7 @@
 namespace hdl_graph_slam {
 	class BuildingTools {
 		public: 
-			static std::vector<Building> getBuildings(double lat, double lon, double rad, Eigen::Vector2d zero_utm);
+			static std::vector<Building> getBuildings(double lat, double lon, double rad, Eigen::Vector2d zero_utm, std::string host);
 			struct Node
 			{
 			    std::string id;
@@ -29,7 +29,7 @@ namespace hdl_graph_slam {
 			BuildingTools(void);
 		private:
 			
-			static std::string downloadBuildings(double lat, double lon, double rad);
+			static std::string downloadBuildings(double lat, double lon, double rad, std::string host);
 			static std::vector<Building> parseBuildings(std::string result, Eigen::Vector3d zero_utm);
 			//static Building constructBuilding(std::string bstr); 
 			static pcl::PointCloud<PointT3>::Ptr buildPointCloud(std::vector<std::string> nd_refs, std::vector<Node> nodes,Eigen::Vector3d zero_utm);
