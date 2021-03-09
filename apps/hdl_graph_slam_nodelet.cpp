@@ -626,6 +626,7 @@ private:
                 A.translation() = T;
                 // set the node
                 bt->node = graph_slam->add_se3_node(A); 
+                std::cout << "A: " << A.matrix() << std::endl;
                 if(first_b) {
                   if(private_nh.param<bool>("fix_first_building", true)) {
                     std::cout << "fixed building!" << std::endl;
@@ -775,7 +776,7 @@ private:
             if(private_nh.param<bool>("enable_gicp_ransac_outlier_threshold", false)) 
               gicp->setRANSACOutlierRejectionThreshold(private_nh.param<double>("gicp_ransac_outlier_threshold", 1.5));
 
-            //std::cout << "max dist: " << gicp->getMaxCorrespondenceDistance() << std::endl;
+            std::cout << "max dist: " << gicp->getMaxCorrespondenceDistance() << std::endl;
             //std::cout << "ransac: " << gicp->getRANSACOutlierRejectionThreshold() << std::endl;
             //std::cout << "fitness: " << gicp->getEuclideanFitnessEpsilon() << std::endl;
 

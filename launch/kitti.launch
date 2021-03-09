@@ -92,7 +92,7 @@
     <param name="test_enable_gps_imu" value="false" />
     <param name="enable_ate_calculation" value="true" />
     <param name="enable_buildings" value="true" />
-    <param name="fix_first_building" value="false" />
+    <param name="fix_first_building" value="true" />
 
     <param name="points_topic" value="$(arg points_topic)" />
     <param name="lidar_range" value="20" />
@@ -109,7 +109,7 @@
     <param name="gicp_correspondence_randomness" value="20" />
     <param name="gicp_max_optimizer_iterations" value="20" />
 
-    <param name="gicp_max_correspondance_distance" value="1" />
+    <param name="gicp_max_correspondance_distance" value="2.0" />
     <param name="gicp_euclidean_fitness_epsilon" value="-1.79e308" />
     <param name="gicp_ransac_outlier_threshold" value="0.05" />
     <param name="gicp_reg_resolution" value="1.0" />
@@ -144,9 +144,9 @@
     <param name="keyframe_delta_trans" value="2.0" />
     <param name="keyframe_delta_angle" value="2.0" />
     <!-- fix first node for optimization stability -->
-    <param name="fix_first_node" value="true"/>
+    <param name="fix_first_node" value="false"/>
     <param name="fix_first_node_stddev" value="10 10 10 1 1 1"/>
-    <param name="fix_first_node_adaptive" value="true"/>
+    <param name="fix_first_node_adaptive" value="false"/>
     <!-- loop closure params -->
     <param name="distance_thresh" value="15.0" />
     <param name="accum_distance_thresh" value="25.0" />
@@ -188,7 +188,7 @@
     <param name="odometry_edge_robust_kernel_size" value="1.0" />
     <param name="loop_closure_edge_robust_kernel" value="Huber" />
     <param name="loop_closure_edge_robust_kernel_size" value="1.0" />
-    <param name="use_const_inf_matrix" value="true" />
+    <param name="use_const_inf_matrix" value="false" />
     <param name="const_stddev_x" value="2" />
     <param name="const_stddev_q" value="0.04" />
     <param name="var_gain_a" value="20.0" />
@@ -198,9 +198,9 @@
     <param name="max_stddev_q" value="0.2" />
 
     <!-- buildings params -->
-    <param name="building_edge_stddev_xy" value="1.0" />
-    <param name="building_edge_stddev_z" value="2.0" />
-    <param name="building_edge_stddev_q" value="0.04" />
+    <param name="building_edge_stddev_xy" value="1.5" />
+    <param name="building_edge_stddev_z" value="1.5" />
+    <param name="building_edge_stddev_q" value="0.4" />
     <param name="b_var_gain_a" value="20" />
     <param name="b_min_stddev_x" value="0.1" />
     <param name="b_max_stddev_x" value="3" />
