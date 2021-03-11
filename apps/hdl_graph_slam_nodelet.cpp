@@ -581,8 +581,13 @@ private:
 
           double dist = (sum/(odomCloud->size()));
           
-          //lidar_range = 10;
-          std::cout << "lidar range: " << lidar_range << std::endl;
+          lidar_range = dist + 5;
+          
+          /*if(keyframe->index > 100)
+              lidar_range = 20;
+          else
+              lidar_range = 5;  */
+          std::cout << "lidar range: " << lidar_range << std::endl;  
           /***************************************************************************************/  
           
           Eigen::Vector2d e_utm_coord = Eigen::Vector2d::Zero();
@@ -644,12 +649,12 @@ private:
                 bt->node = graph_slam->add_se2_node(A); 
                 if(fix_first_building) {
                   if(private_nh.param<bool>("fix_first_building", true)) {
-                    std::cout << "fixed building!" << std::endl;
+                    //std::cout << "fixed building!" << std::endl;
                     //bt->node->setFixed(true);
                     //keyframe->node->setFixed(true);
 
-                    /*********************************************************************/
-                    Eigen::MatrixXd info = Eigen::MatrixXd::Identity(3, 3) / imu_orientation_edge_stddev;
+                    /********************************************************************/
+                    /*Eigen::MatrixXd info = Eigen::MatrixXd::Identity(1, 1) / imu_orientation_edge_stddev;
                     auto edge = graph_slam->add_se2_prior_quat_edge(keyframe->node, *keyframe->orientation, info);
                     graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("imu_orientation_edge_robust_kernel", "NONE"), private_nh.param<double>("imu_orientation_edge_robust_kernel_size", 1.0));
                     
@@ -660,9 +665,11 @@ private:
                     
                     graph_slam->add_robust_kernel(edge2, private_nh.param<std::string>("gps_edge_robust_kernel", "NONE"), private_nh.param<double>("gps_edge_robust_kernel_size", 1.0));
                     
+                    std::cout << "gps info: " << information_matrix << std::endl;
+                    std::cout << "quat info: " << info<< std::endl;*/
                     /************************************************************************/
                   }
-                  fix_first_building = false;
+                  //fix_first_building = false;
                 }
               
                 //std::cout << "id: " << bt->building.id << " est: " << bt->node->estimate().translation() << std::endl;
@@ -784,6 +791,19 @@ private:
 
             Eigen::Isometry2d t_s_bs_iso = Eigen::Isometry2d::Identity();
             t_s_bs_iso.matrix() = t_s_bs;
+
+            Eigen::Isometry2d temp = t_s_bs_iso*(keyframe->odom);
+            if(fix_first_building) {
+              if(private_nh.param<bool>("fix_first_building", true)) {
+                std::cout << "fixed building!" << std::endl;
+                auto edge = graph_slam->add_se2_edge_prior(keyframe->node, temp, information_matrix);
+                graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
+              }
+              fix_first_building = false;
+            }
+            std::cout << "prior gps: " << *keyframe->utm_coord << std::endl;
+            std::cout << "prior quat: " << (*keyframe->orientation).toRotationMatrix() << std::endl;
+            std::cout << "prior se2: " << (temp).matrix() << std::endl;
             //auto edge = graph_slam->add_se2_edge_prior(keyframe->node, t_s_bs_iso*(keyframe->odom), information_matrix);
             //graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
 
@@ -817,7 +837,7 @@ private:
               
               //auto edge1 = graph_slam->add_se3_edge_prior(keyframe->node, t_s_b_iso, information_matrix);
               //graph_slam->add_robust_kernel(edge1, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
-              
+
               auto edge = graph_slam->add_se2_edge(bntemp->node, keyframe->node, t_s_b_iso, information_matrix);
               graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
             }
@@ -978,17 +998,17 @@ private:
     }
 
     /*****************************************************************************/
-    /*pcl::PointCloud<PointT3>::Ptr estimatedBuildingsCloud(new pcl::PointCloud<PointT3>);
-    pcl::PointCloud<PointT3>::Ptr buildingsCloud(new pcl::PointCloud<PointT3>);
+    pcl::PointCloud<PointT3>::Ptr estimatedBuildingsCloud(new pcl::PointCloud<PointT3>);
+    //pcl::PointCloud<PointT3>::Ptr buildingsCloud(new pcl::PointCloud<PointT3>);
     for(auto it3 = buildings.begin(); it3 != buildings.end(); it3++)
     {
       BuildingNode::Ptr btemp = *it3;
-      Eigen::Isometry3d est = btemp->node->estimate();
+      Eigen::Isometry3d est = isometry2dto3d(btemp->node->estimate().toIsometry());
       pcl::PointCloud<PointT3>::Ptr temp_cloud_7(new pcl::PointCloud<PointT3>);
       pcl::transformPointCloud(*(btemp->referenceSystem), *temp_cloud_7, est.matrix());
       *estimatedBuildingsCloud += *temp_cloud_7;
 
-      *buildingsCloud += *btemp->building.geometry;
+      //*buildingsCloud += *btemp->building.geometry;
     }
 
     sensor_msgs::PointCloud2Ptr eb_cloud_msg(new sensor_msgs::PointCloud2());
@@ -997,7 +1017,7 @@ private:
     eb_cloud_msg->header.stamp = keyframe->stamp;
     estimated_buildings_pub.publish(eb_cloud_msg);
 
-    sensor_msgs::PointCloud2Ptr b_cloud_msg(new sensor_msgs::PointCloud2());
+    /*sensor_msgs::PointCloud2Ptr b_cloud_msg(new sensor_msgs::PointCloud2());
     pcl::toROSMsg(*buildingsCloud, *b_cloud_msg);
     b_cloud_msg->header.frame_id = "map";
     b_cloud_msg->header.stamp = keyframe->stamp;
@@ -1340,11 +1360,16 @@ private:
         continue;
       }
 
+      std::cout << "before edge" << std::endl;
       g2o::EdgeSE2PriorXY* edge_priori_xy = dynamic_cast<g2o::EdgeSE2PriorXY*>(edge);
       if(edge_priori_xy) {
+        std::cout << "entered edge" << std::endl;
         g2o::VertexSE2* v1 = dynamic_cast<g2o::VertexSE2*>(edge_priori_xy->vertices()[0]);
         Eigen::Vector2d pt1 = v1->estimate().translation();
         Eigen::Vector2d pt2 = edge_priori_xy->measurement();
+
+        std::cout << "gps error ao: " << edge_priori_xy->error() << std::endl;
+  
 
         edge_marker.points[i * 2].x = pt1.x();
         edge_marker.points[i * 2].y = pt1.y();
@@ -1364,12 +1389,16 @@ private:
 
         continue;
       }
+      std::cout << "after edge" << std::endl;
 
       g2o::EdgeSE2Prior* edge_priori = dynamic_cast<g2o::EdgeSE2Prior*>(edge);
       if(edge_priori) {
         g2o::VertexSE2* v1 = dynamic_cast<g2o::VertexSE2*>(edge_priori->vertices()[0]);
         Eigen::Vector2d pt1 = v1->estimate().translation();
         Eigen::Isometry2d pt2 = edge_priori->measurement().toIsometry();
+
+        std::cout << "error ao: " << edge_priori->error() << std::endl;
+  
 
         edge_marker.points[i * 2].x = pt1.x();
         edge_marker.points[i * 2].y = pt1.y();

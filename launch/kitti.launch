@@ -97,7 +97,7 @@
     <param name="buildings_host" value="https://overpass.openstreetmap.ru" />
 
     <param name="points_topic" value="$(arg points_topic)" />
-    <param name="lidar_range" value="20" />
+    <param name="lidar_range" value="5" />
     <param name="ground_floor_max_thresh" value="1" />
     <param name="radius_search" value="0.5" />
     <param name="min_neighbors_in_radius" value="10" />
@@ -167,9 +167,8 @@
     <param name="reg_nn_search_method" value="DIRECT7" />
     <!-- edge params -->
     <!-- Buildings -->
-    <param name="map_edge_robust_kernel" value="DCS" />
+    <param name="map_edge_robust_kernel" value="NONE" />
     <param name="map_edge_robust_kernel_size" value="1.0" />
-    <param name="download_buildings_update_interval" value="5" />
     <!-- GPS -->
     <param name="gps_edge_robust_kernel" value="NONE" />
     <param name="gps_edge_robust_kernel_size" value="1.0" />
@@ -191,8 +190,8 @@
     <param name="loop_closure_edge_robust_kernel" value="Huber" />
     <param name="loop_closure_edge_robust_kernel_size" value="1.0" />
     <param name="use_const_inf_matrix" value="false" />
-    <param name="const_stddev_x" value="100.0" />
-    <param name="const_stddev_q" value="100.0" />
+    <param name="const_stddev_x" value="200.0" />
+    <param name="const_stddev_q" value="0.04" />
     <param name="var_gain_a" value="20.0" />
     <param name="min_stddev_x" value="0.1" />
     <param name="max_stddev_x" value="5.0" />
@@ -200,7 +199,8 @@
     <param name="max_stddev_q" value="0.2" />
 
     <!-- buildings params -->
-    <param name="building_edge_stddev_xy" value="2.0" />
+    <!-- 1.0 0.4 -->
+    <param name="building_edge_stddev_xy" value="1.0" />
     <param name="building_edge_stddev_z" value="0.0" />
     <param name="building_edge_stddev_q" value="0.4" />
     <param name="b_var_gain_a" value="20" />

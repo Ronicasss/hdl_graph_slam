@@ -105,6 +105,15 @@ g2o::EdgeSE2PriorXY* GraphSLAM::add_se2_prior_xy_edge(g2o::VertexSE2* v_se2, con
   edge->vertices()[0] = v_se2;
   graph->addEdge(edge);
 
+
+  std::cout << "gps error: " << edge->error() << std::endl;
+  std::cout << "gps inf mat: " << edge->information() << std::endl;
+  std::cout << "gps meas: " << edge->measurement() << std::endl;
+  
+  std::cout << "gps est: " << (v_se2->estimate()).toIsometry().matrix() << std::endl;
+
+  std::cout << "gps comp error: " << (((v_se2->estimate()).translation()) - (edge->measurement())) << std::endl;
+
   return edge;
 }
 
@@ -114,6 +123,16 @@ g2o::EdgeSE2PriorQuat* GraphSLAM::add_se2_prior_quat_edge(g2o::VertexSE2* v_se2,
   edge->setInformation(information_matrix);
   edge->vertices()[0] = v_se2;
   graph->addEdge(edge);
+
+  std::cout << "quat error: " << edge->error() << std::endl;
+  std::cout << "quat inf mat: " << edge->information() << std::endl;
+  std::cout << "quat meas: " << edge->measurement().toRotationMatrix() << std::endl;
+  
+  std::cout << "quat est: " << (v_se2->estimate()).toIsometry().matrix() << std::endl;
+
+ 
+  std::cout << "quat comp error: " << ((v_se2->estimate().rotation().angle())-(edge->measurement().angle())) << std::endl;
+
 
   return edge;
 }
@@ -125,7 +144,15 @@ g2o::EdgeSE2Prior* GraphSLAM::add_se2_edge_prior(g2o::VertexSE2* v1, const Eigen
   edge->vertices()[0] = v1;
   //edge->setParameterId(0, 0);
   graph->addEdge(edge);
+  
+  std::cout << "error: " << edge->error() << std::endl;
+  std::cout << "inf mat: " << edge->information() << std::endl;
+  std::cout << "meas: " << edge->measurement().toIsometry().matrix() << std::endl;
+  
+  std::cout << "est: " << (v1->estimate()).toIsometry().matrix() << std::endl;
 
+  std::cout << "inv: " << edge->measurement().toIsometry().matrix().inverse() << std::endl;
+  std::cout << "comp error: " << ((edge->measurement().toIsometry().matrix().inverse())*((v1->estimate()).toIsometry().matrix())) << std::endl;
   return edge;
 }
 
