@@ -12,6 +12,7 @@ namespace hdl_graph_slam {
 class InformationMatrixCalculator {
 public:
   using PointT = pcl::PointXYZI;
+  using PointT3 = pcl::PointXYZ;
 
   InformationMatrixCalculator() {}
   InformationMatrixCalculator(ros::NodeHandle& nh);
@@ -32,6 +33,8 @@ public:
   }
 
   static double calc_fitness_score(const pcl::PointCloud<PointT>::ConstPtr& cloud1, const pcl::PointCloud<PointT>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose, double max_range = std::numeric_limits<double>::max());
+  static double calc_fitness_score(const pcl::PointCloud<PointT3>::ConstPtr& cloud1, const pcl::PointCloud<PointT3>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose, double max_range = std::numeric_limits<double>::max());
+
 
   Eigen::MatrixXd calc_information_matrix(const pcl::PointCloud<PointT>::ConstPtr& cloud1, const pcl::PointCloud<PointT>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose) const;
   Eigen::MatrixXd calc_information_matrix_buildings(const pcl::PointCloud<PointT>::ConstPtr& cloud1, const pcl::PointCloud<PointT>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose) const;
