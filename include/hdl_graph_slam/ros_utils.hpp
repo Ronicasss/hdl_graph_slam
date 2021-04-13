@@ -42,6 +42,12 @@ static geometry_msgs::TransformStamped matrix2transform(const ros::Time& stamp, 
   return odom_trans;
 }
 
+static Eigen::Isometry2d getIsoFromTrans(Eigen::Vector2d trans) {
+  Eigen::Isometry2d iso = Eigen::Isometry2d::Identity();
+  iso.translation() = trans;
+  return iso;
+}
+
 static Eigen::Matrix4f matrix3fto4f(Eigen::Matrix3f m3f) {
   Eigen::Matrix4f m4f = Eigen::Matrix4f::Identity();
   m4f.block<2,2>(0,0) = m3f.block<2,2>(0,0);
@@ -66,7 +72,7 @@ static geometry_msgs::TransformStamped matrix2transform2d(const ros::Time& stamp
 
   odom_trans.transform.translation.x = pose(0, 3);
   odom_trans.transform.translation.y = pose(1, 3);
-  odom_trans.transform.translation.z = pose(2, 3);
+  odom_trans.transform.translation.z = 0;
   odom_trans.transform.rotation = odom_quat;
 
   return odom_trans;

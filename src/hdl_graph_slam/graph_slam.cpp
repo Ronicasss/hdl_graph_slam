@@ -177,6 +177,26 @@ g2o::EdgeSE2* GraphSLAM::add_se2_edge(g2o::VertexSE2* v1, g2o::VertexSE2* v2, co
   return edge;
 }
 
+ g2o::EdgeSE2PointXY* GraphSLAM::add_se2_pointxy_edge(g2o::VertexSE2* v1, g2o::VertexPointXY* v2, const Eigen::Vector2d& relative_pose, const Eigen::MatrixXd& information_matrix){
+  g2o::EdgeSE2PointXY* edge(new g2o::EdgeSE2PointXY());
+  edge->setMeasurement(relative_pose);
+  edge->setInformation(information_matrix);
+  edge->vertices()[0] = v1;
+  edge->vertices()[1] = v2;
+  graph->addEdge(edge);
+
+  return edge;
+ }
+
+ g2o::VertexPointXY* GraphSLAM::add_pointxy_node(const Eigen::Vector2d& pose) {
+  g2o::VertexPointXY* vertex(new g2o::VertexPointXY());
+  vertex->setId(static_cast<int>(graph->vertices().size()));
+  vertex->setEstimate(pose);
+  graph->addVertex(vertex);
+
+  return vertex;
+ }
+
 void GraphSLAM::add_robust_kernel(g2o::HyperGraph::Edge* edge, const std::string& kernel_type, double kernel_size) {
   if(kernel_type == "NONE") {
     return;

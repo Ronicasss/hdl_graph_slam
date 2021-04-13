@@ -52,6 +52,7 @@ namespace hdl_graph_slam {
 					pcl::PointCloud<PointT3>::Ptr pc_temp(new pcl::PointCloud<PointT3>);
 					*pc_temp = *(buildPointCloud(nd_refs,nodes,zero_utm));
 					btemp.geometry = pc_temp;
+					btemp.vertices = getVertices(nd_refs,nodes,zero_utm);
 					b.push_back(btemp);
 		        }
 	    	}
@@ -60,6 +61,16 @@ namespace hdl_graph_slam {
 		    std::cerr<< "No xml! error:" << e.what() << std::endl;
 		}
     	return b;
+	}
+
+	pcl::PointCloud<PointT3>::Ptr BuildingTools::getVertices(std::vector<std::string> nd_refs, std::vector< Node> nodes, Eigen::Vector3d zero_utm) {
+		pcl::PointCloud<PointT3>::Ptr pc_temp(new pcl::PointCloud<PointT3>);
+		for(std::vector<std::string>::const_iterator it = nd_refs.begin(); it != nd_refs.end(); ++it) {
+			Node n = getNode(*it, nodes);
+			PointT3 pt_temp = toUtm(Eigen::Vector3d(n.lat, n.lon, 0), zero_utm);
+			pc_temp->push_back(pt_temp);
+		}
+		return pc_temp;		
 	}
 
 	pcl::PointCloud<PointT3>::Ptr BuildingTools::buildPointCloud(std::vector<std::string> nd_refs, std::vector< Node> nodes, Eigen::Vector3d zero_utm) {
@@ -180,6 +191,7 @@ namespace hdl_graph_slam {
 	        std::ostringstream os;
 	        curlpp::options::WriteStream ws(&os);
 
+	        
 	        request.setOpt(new curlpp::options::Url(url));
 	        request.setOpt(ws);
 	        request.perform();

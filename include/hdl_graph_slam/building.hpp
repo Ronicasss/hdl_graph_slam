@@ -14,6 +14,7 @@ namespace hdl_graph_slam {
 			std::string id;
 			std::map<std::string,std::string> tags;
 			pcl::PointCloud<PointT3>::Ptr geometry; // already interpolated and referred to zero utm
+			pcl::PointCloud<PointT3>::Ptr vertices;
 			Building(void);
 	};
 }

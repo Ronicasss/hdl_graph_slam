@@ -88,19 +88,22 @@
     <remap from="/gps/navsat" to="$(arg gps_topic)" />
     <remap from="/gpsimu_driver/imu_data" to="$(arg imu_topic)" />
 
-    <param name="gt_path" value="/home/veronica/Desktop/Thesis/09.txt" />
+    <param name="gt_path" value="/home/veronica/Desktop/Thesis/07.txt" />
     <param name="test_enable_gps_imu" value="false" />
     <param name="enable_ate_calculation" value="true" />
     <param name="enable_buildings" value="true" />
     <param name="fix_first_building" value="true" />
     <!-- https://overpass.openstreetmap.ru, https://overpass.nchc.org.tw, https://overpass-api.de -->
-    <param name="buildings_host" value="https://overpass.openstreetmap.ru" />
+    <param name="buildings_host" value="overpass.openstreetmap.ru" />
 
     <param name="points_topic" value="$(arg points_topic)" />
-    <param name="lidar_range" value="20" />
+    <param name="lidar_range" value="15" />
     <param name="dynamic_lidar_range" value="true" />
     <param name="lidar_range_add_factor" value="7.0" />
     <param name="estimated_building_cloud" value="true" />
+    <param name="padding" value="1.5" />
+    <param name="initial_padding" value="1.5" />
+    <param name="enable_padding" value="false" />
 
     <param name="ground_floor_max_thresh" value="1" />
     <param name="radius_search" value="0.5" />
@@ -109,17 +112,20 @@
 
     <param name="transformation_epsilon" value="0.01" />
     <param name="maximum_iterations" value="64" />
-    <param name="use_reciprocal_correspondences" value="false" />
+    <param name="use_reciprocal_correspondences" value="true" />
     <param name="gicp_correspondence_randomness" value="20" />
     <param name="gicp_max_optimizer_iterations" value="20" />
 
-    <param name="gicp_max_correspondance_distance" value="2.5" />
-    <param name="gicp_euclidean_fitness_epsilon" value="-1.79e308" />
-    <param name="gicp_ransac_outlier_threshold" value="0.05" />
+    <param name="gicp_max_correspondance_distance" value="15.0" />
+    <param name="gicp_max_correspondance_distance_mid_2" value="3.0" />
+    <param name="gicp_max_correspondance_distance_mid" value="2.0" />
+    <param name="gicp_max_correspondance_distance_min" value="2.5" />
+    <param name="gicp_euclidean_fitness_epsilon" value="1e-12" />
+    <param name="gicp_ransac_outlier_threshold" value="1.0" />
     <param name="gicp_reg_resolution" value="1.0" />
     <param name="gicp_reg_num_threads" value="0" />
 
-    <param name="gicp_initial_reg_resolution" value="2.5" />
+    <param name="gicp_initial_reg_resolution" value="1.0" />
     <param name="gicp_init_res_kf_thresh" value="0" />
     <param name="guess_thresh" value="0.25" />
 
@@ -191,9 +197,9 @@
     <param name="odometry_edge_robust_kernel_size" value="1.0" />
     <param name="loop_closure_edge_robust_kernel" value="Huber" />
     <param name="loop_closure_edge_robust_kernel_size" value="1.0" />
-    <param name="use_const_inf_matrix" value="true" />
-    <param name="const_stddev_x" value="25.0" />
-    <param name="const_stddev_q" value="1.0" />
+    <param name="use_const_inf_matrix" value="false" />
+    <param name="const_stddev_x" value="1.0" />
+    <param name="const_stddev_q" value="0.04" />
     <param name="var_gain_a" value="20.0" />
     <param name="min_stddev_x" value="0.1" />
     <param name="max_stddev_x" value="5.0" />
@@ -204,7 +210,7 @@
     <!-- 1.0 0.4 -->
     <param name="building_edge_stddev_xy" value="1.0" />
     <param name="building_edge_stddev_z" value="0.0" />
-    <param name="building_edge_stddev_q" value="0.04" />
+    <param name="building_edge_stddev_q" value="0.0" />
     <param name="b_var_gain_a" value="20" />
     <param name="b_min_stddev_x" value="0.1" />
     <param name="b_max_stddev_x" value="3" />

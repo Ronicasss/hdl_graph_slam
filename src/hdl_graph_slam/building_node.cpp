@@ -19,6 +19,21 @@ namespace hdl_graph_slam {
 		return;		
 	}
 
+	// this method refers all points of the building pc to local_origin
+	pcl::PointCloud<PointT3>::Ptr BuildingNode::setVerticesReferenceSystem() {
+		pcl::PointCloud<PointT3>::Ptr tmp(new pcl::PointCloud<PointT3>);
+
+		// for to correct all points as pt = pt - local_origin 
+		for(int i = 0; i< building.vertices->size(); i++) {
+			PointT3 pt_temp = building.vertices->at(i);
+			pt_temp.x = pt_temp.x - local_origin(0);
+			pt_temp.y = pt_temp.y - local_origin(1);
+			pt_temp.z = 0;
+			tmp->push_back(pt_temp);
+		}
+		return tmp;		
+	}
+
 	// set local_origin = south-westernmost point of the building
 	void BuildingNode::setOrigin() {
 		pcl::PointCloud<PointT3>::Ptr geometry = building.geometry;

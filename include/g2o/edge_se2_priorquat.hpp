@@ -41,7 +41,7 @@ public:
 
     Eigen::Rotation2D<double> estimate = v1->estimate().rotation();
 
-    _error(0,0) = estimate.angle() - _measurement.angle();
+    _error[0] = normalize_theta(estimate.angle() - _measurement.angle());
   }
 
   void setMeasurement(const Eigen::Rotation2D<double>& m) override {
