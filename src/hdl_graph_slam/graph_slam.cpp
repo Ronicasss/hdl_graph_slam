@@ -100,6 +100,7 @@ int GraphSLAM::num_edges() const {
 
 g2o::EdgeSE2PriorXY* GraphSLAM::add_se2_prior_xy_edge(g2o::VertexSE2* v_se2, const Eigen::Vector2d& xy, const Eigen::MatrixXd& information_matrix) {
   g2o::EdgeSE2PriorXY* edge(new g2o::EdgeSE2PriorXY());
+  edge->setId(static_cast<int>(graph->edges().size()));
   edge->setMeasurement(xy);
   edge->setInformation(information_matrix);
   edge->vertices()[0] = v_se2;
@@ -119,6 +120,7 @@ g2o::EdgeSE2PriorXY* GraphSLAM::add_se2_prior_xy_edge(g2o::VertexSE2* v_se2, con
 
 g2o::EdgeSE2PriorQuat* GraphSLAM::add_se2_prior_quat_edge(g2o::VertexSE2* v_se2, const Eigen::Rotation2D<double>& quat, const Eigen::MatrixXd& information_matrix) {
   g2o::EdgeSE2PriorQuat* edge(new g2o::EdgeSE2PriorQuat());
+  edge->setId(static_cast<int>(graph->edges().size()));
   edge->setMeasurement(quat);
   edge->setInformation(information_matrix);
   edge->vertices()[0] = v_se2;
@@ -139,6 +141,7 @@ g2o::EdgeSE2PriorQuat* GraphSLAM::add_se2_prior_quat_edge(g2o::VertexSE2* v_se2,
 
 g2o::EdgeSE2Prior* GraphSLAM::add_se2_edge_prior(g2o::VertexSE2* v1, const Eigen::Isometry2d& relative_pose, const Eigen::MatrixXd& information_matrix) {
   g2o::EdgeSE2Prior* edge(new g2o::EdgeSE2Prior());
+  edge->setId(static_cast<int>(graph->edges().size()));
   edge->setMeasurement(relative_pose);
   edge->setInformation(information_matrix);
   edge->vertices()[0] = v1;
@@ -168,6 +171,7 @@ g2o::VertexSE2* GraphSLAM::add_se2_node(const Eigen::Isometry2d& pose) {
 
 g2o::EdgeSE2* GraphSLAM::add_se2_edge(g2o::VertexSE2* v1, g2o::VertexSE2* v2, const Eigen::Isometry2d& relative_pose, const Eigen::MatrixXd& information_matrix) {
   g2o::EdgeSE2* edge(new g2o::EdgeSE2());
+  edge->setId(static_cast<int>(graph->edges().size()));
   edge->setMeasurement(relative_pose);
   edge->setInformation(information_matrix);
   edge->vertices()[0] = v1;
@@ -179,6 +183,7 @@ g2o::EdgeSE2* GraphSLAM::add_se2_edge(g2o::VertexSE2* v1, g2o::VertexSE2* v2, co
 
  g2o::EdgeSE2PointXY* GraphSLAM::add_se2_pointxy_edge(g2o::VertexSE2* v1, g2o::VertexPointXY* v2, const Eigen::Vector2d& relative_pose, const Eigen::MatrixXd& information_matrix){
   g2o::EdgeSE2PointXY* edge(new g2o::EdgeSE2PointXY());
+  edge->setId(static_cast<int>(graph->edges().size()));
   edge->setMeasurement(relative_pose);
   edge->setInformation(information_matrix);
   edge->vertices()[0] = v1;
@@ -195,6 +200,17 @@ g2o::EdgeSE2* GraphSLAM::add_se2_edge(g2o::VertexSE2* v1, g2o::VertexSE2* v2, co
   graph->addVertex(vertex);
 
   return vertex;
+ }
+
+ g2o::EdgeSE2XYPrior* GraphSLAM::add_se2_pointxy_prior(g2o::VertexSE2* v1, const Eigen::Vector2d& relative_pose, const Eigen::MatrixXd& information_matrix) {
+  g2o::EdgeSE2XYPrior* edge(new g2o::EdgeSE2XYPrior());
+  edge->setId(static_cast<int>(graph->edges().size()));
+  edge->setMeasurement(relative_pose);
+  edge->setInformation(information_matrix);
+  edge->vertices()[0] = v1;
+  graph->addEdge(edge);
+
+  return edge;
  }
 
 void GraphSLAM::add_robust_kernel(g2o::HyperGraph::Edge* edge, const std::string& kernel_type, double kernel_size) {

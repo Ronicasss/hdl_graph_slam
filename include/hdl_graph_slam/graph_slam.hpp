@@ -17,6 +17,7 @@ class EdgeSE2Prior;
 class EdgeSE2;
 class VertexPointXY;
 class EdgeSE2PointXY;
+class EdgeSE2XYPrior;
 }  // namespace g2o
 
 namespace hdl_graph_slam {
@@ -50,6 +51,8 @@ public:
   g2o::EdgeSE2PointXY* add_se2_pointxy_edge(g2o::VertexSE2* v1, g2o::VertexPointXY* v2, const Eigen::Vector2d& relative_pose, const Eigen::MatrixXd& information_matrix);
 
   g2o::VertexPointXY* add_pointxy_node(const Eigen::Vector2d& pose);
+
+  g2o::EdgeSE2XYPrior* add_se2_pointxy_prior(g2o::VertexSE2* v1, const Eigen::Vector2d& relative_pose, const Eigen::MatrixXd& information_matrix);
 
   void add_robust_kernel(g2o::HyperGraph::Edge* edge, const std::string& kernel_type, double kernel_size);
 
