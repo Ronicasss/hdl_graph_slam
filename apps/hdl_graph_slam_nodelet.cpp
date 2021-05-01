@@ -1007,8 +1007,8 @@ private:
                   double media_y = av_y/k;
                   std::cout << "average x: " << media_x << std::endl;
                   std::cout << "average y: " << media_y << std::endl;
-                  if(abs(media_x) >= 0.5 || abs(media_y) >= 0.5) {
-                   
+                  if(abs(media_x) >= 0.5 || abs(media_y) >= 0.5 || bntemp->moved) {
+                      bntemp->moved = true;
                       std::cout << "SPOSTAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" << std::endl;
                       Eigen::Vector2d sp = Eigen::Vector2d::Zero();
                       sp(0) = bntemp->node->estimate()(0) + media_x;

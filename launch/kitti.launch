@@ -118,10 +118,10 @@
     <param name="gicp_correspondence_randomness" value="20" />
     <param name="gicp_max_optimizer_iterations" value="20" />
 
-    <param name="gicp_max_correspondance_distance" value="2.2" />
-    <param name="gicp_max_correspondance_distance_mid_2" value="2.2" />
-    <param name="gicp_max_correspondance_distance_mid" value="2.2" />
-    <param name="gicp_max_correspondance_distance_min" value="2.2" />
+    <param name="gicp_max_correspondance_distance" value="2.0" />
+    <param name="gicp_max_correspondance_distance_mid_2" value="2.0" />
+    <param name="gicp_max_correspondance_distance_mid" value="2.0" />
+    <param name="gicp_max_correspondance_distance_min" value="2.0" />
     <param name="gicp_euclidean_fitness_epsilon" value="1e-12" />
     <param name="gicp_ransac_outlier_threshold" value="1.0" />
     <param name="gicp_reg_resolution" value="1.0" />
