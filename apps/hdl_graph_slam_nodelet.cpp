@@ -52,6 +52,7 @@
 
 #include <g2o/edge_se2_priorxy.hpp>
 #include <g2o/edge_se2_priorquat.hpp>
+#include <g2o/edge_se2_pointxy_custom.hpp>
 
 #include "hdl_graph_slam/building_tools.hpp"
 #include "hdl_graph_slam/building_node.hpp"
@@ -942,7 +943,7 @@ private:
               //information_matrix(2, 2) /= private_nh.param<float>("building_edge_stddev_q", 1);
             } else {
               // pc XYZI needed to compute the information matrix 
-              /*pcl::PointCloud<PointT>::Ptr btempcloud(new pcl::PointCloud<PointT>);
+              pcl::PointCloud<PointT>::Ptr btempcloud(new pcl::PointCloud<PointT>);
               pcl::copyPointCloud(*buildingsCloud,*btempcloud); // convert pcl buildings pxyz to pxyzi
               pcl::PointCloud<PointT>::Ptr otempcloud(new pcl::PointCloud<PointT>);
               pcl::copyPointCloud(*odomCloud,*otempcloud); // convert pcl odom pxyz to pxyzi
@@ -953,7 +954,7 @@ private:
               information_matrix_6 = inf_calclator->calc_information_matrix_buildings(btempcloud, otempcloud, t_s_bs_iso);
             
               information_matrix.block<2,2>(0,0) = information_matrix_6.block<2,2>(0,0);
-              information_matrix(2,2) = information_matrix_6(5,5);*/
+              //information_matrix(2,2) = information_matrix_6(5,5);
             }
             std::cout << "buildings inf: " << information_matrix << std::endl;
 
@@ -1011,13 +1012,12 @@ private:
                 std::cout << "fixed building!" << std::endl;
 
                 Eigen::MatrixXd inf = Eigen::MatrixXd::Identity(3, 3);
-                std::cout << "fixed building!2" << std::endl;
+                
                 inf.topLeftCorner(2, 2).array() /= private_nh.param<float>("const_stddev_x", 0.25);
-                std::cout << "fixed building!3" << std::endl;
+                
                 auto edge = graph_slam->add_se2_edge_prior(keyframe->node, temp, inf);
-                std::cout << "fixed building!4" << std::endl;
+                
                 graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
-                std::cout << "fixed building!5" << std::endl;
               }
               fix_first_building = false;
               //prova = ((matrix4dto3d(guess.cast<double>()))*(keyframe->odom.matrix().inverse())).inverse() * t_s_bs;
@@ -1046,7 +1046,7 @@ private:
               for(auto it1 = bnodes.begin(); it1 != bnodes.end(); it1++)
               {
                 BuildingNode::Ptr bntemp = *it1;
-                std::cout << "building id: " << bntemp->building.id << std::endl;
+                //std::cout << "building id: " << bntemp->building.id << std::endl;
 
                 Eigen::Matrix3d t_bs_b = Eigen::Matrix3d::Identity();
                 //t_bs_b.block<2,1>(0, 2) = bntemp->local_origin;
@@ -1058,33 +1058,33 @@ private:
                 t_s_b_iso.matrix() = t_s_b.inverse();
 
                 
-                /*******************/
+                /********************/
                 // find last edge = edge with highest id
                 std::vector<int> ids;
-                
+            
                 auto edge_itr2 = bntemp->node->edges().begin();
                 
                 for(int i = 0; edge_itr2 != bntemp->node->edges().end(); edge_itr2++, i++) {
                   g2o::HyperGraph::Edge* edge = *edge_itr2;
-                  g2o::EdgeSE2PointXY* edge_se2xy = dynamic_cast<g2o::EdgeSE2PointXY*>(edge);
+                  g2o::EdgeSE2PointXYCustom* edge_se2xy = dynamic_cast<g2o::EdgeSE2PointXYCustom*>(edge);
                   //edge_se2xy->setLevel(0);
                   ids.push_back(edge_se2xy->id());
                 }
 
-                std::cout << "prima" << std::endl;
-                for(int j=0;j<ids.size();j++) {
-                  std::cout << "ids " << ids[j] << std::endl;
-                }
-                std::cout << "dopo" << std::endl;
+                //std::cout << "prima" << std::endl;
+                //for(int j=0;j<ids.size();j++) {
+                //  std::cout << "ids " << ids[j] << std::endl;
+                //}
+                //std::cout << "dopo" << std::endl;
                 if(ids.size() > private_nh.param<int>("edges_to_use", 1)) {
                   std::sort(ids.begin(), ids.end(), std::greater<int>());
                   ids.resize(private_nh.param<int>("edges_to_use", 1));
                 }
-                std::cout << "prima 2" << std::endl;
+                /*std::cout << "prima 2" << std::endl;
                 for(int j=0;j<ids.size();j++) {
                   std::cout << "ids " << ids[j] << std::endl;
                 }
-                std::cout << "dopo 2" << std::endl;
+                std::cout << "dopo 2" << std::endl;*/
                 /*******************
                 if(ids.size() > 0) {
                   auto edge_itr = bntemp->node->edges().begin();
@@ -1129,27 +1129,27 @@ private:
                     }
                   }
                 }
-                /*******************/
+                /********************/
                 
-                std::cout << "prima 3" << std::endl;
+                //std::cout << "prima 3" << std::endl;
                 if(bntemp->node->edges().size() > 0) {
                   auto edge_itr = bntemp->node->edges().begin();
                   for(int i = 0; edge_itr != bntemp->node->edges().end(); edge_itr++, i++) {
                     
                     g2o::HyperGraph::Edge* edge = *edge_itr;
                   
-                    g2o::EdgeSE2PointXY* edge_se3 = dynamic_cast<g2o::EdgeSE2PointXY*>(edge);
+                    g2o::EdgeSE2PointXYCustom* edge_se3 = dynamic_cast<g2o::EdgeSE2PointXYCustom*>(edge);
                    
                     if(std::find(ids.begin(), ids.end(), edge_se3->id()) != ids.end()) {
-                      std::cout << "ids_yes " <<  edge_se3->id() << std::endl;
+                      //std::cout << "ids_yes " <<  edge_se3->id() << std::endl;
                       edge_se3->setLevel(0);
                     } else {
-                      std::cout << "ids_no " <<  edge_se3->id() << std::endl;
+                      //std::cout << "ids_no " <<  edge_se3->id() << std::endl;
                      edge_se3->setLevel(1);
                     }
                   }
                 }
-                std::cout << "dopo 3" << std::endl;
+                //std::cout << "dopo 3" << std::endl;
 
                 
                 //std::cout << "dopo" << std::endl;
@@ -1220,8 +1220,8 @@ private:
                 
 
                 // buildings tf
-                //geometry_msgs::TransformStamped ts3 = matrix2transform2d(keyframe->stamp,  (t_bs_b).cast<float>(), "map", "b_"+bntemp->building.id);
-                //b_tf_broadcaster.sendTransform(ts3);
+                geometry_msgs::TransformStamped ts3 = matrix2transform2d(keyframe->stamp,  (t_bs_b).cast<float>(), "map", "b_"+std::to_string(bntemp->node->id()));
+                b_tf_broadcaster.sendTransform(ts3);
 
 
                 // buildings tf
@@ -1236,11 +1236,11 @@ private:
 
                 // edge tf (from keyframe to building)
                 //geometry_msgs::TransformStamped ts3 = matrix2transform2d(keyframe->stamp,  t_s_b.inverse().cast<float>(), "kf_"+std::to_string(keyframe->index), "tsb_"+ std::to_string(keyframe->index) + "_" + bntemp->building.id);
-                geometry_msgs::TransformStamped ts3 = matrix2transform2d(keyframe->stamp,  t_s_b.inverse().cast<float>(), "kf_"+std::to_string(keyframe->id()), "tsb"+std::to_string(idx)+"_" + bntemp->building.id);
+                geometry_msgs::TransformStamped ts4 = matrix2transform2d(keyframe->stamp,  t_s_b.inverse().cast<float>(), "kf_"+std::to_string(keyframe->id()), "tsb"+std::to_string(keyframe->id())+"_" + std::to_string(bntemp->node->id()));
                 
                 
 
-                b_tf_broadcaster.sendTransform(ts3);
+                b_tf_broadcaster.sendTransform(ts4);
                 
                 //auto edge1 = graph_slam->add_se3_edge_prior(keyframe->node, t_s_b_iso, information_matrix);
                 //graph_slam->add_robust_kernel(edge1, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
@@ -1395,6 +1395,7 @@ private:
       anchor_node->setEstimate(anchor_target);
     }
     //std::cout << "before opt" << std::endl;
+    std::cout << "dim: " << static_cast<int>(graph_slam->graph->edges().size()) << std::endl;
     // optimize the pose graph
     int num_iterations = private_nh.param<int>("g2o_solver_num_iterations", 1024);
     graph_slam->optimize(num_iterations);

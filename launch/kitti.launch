@@ -118,10 +118,10 @@
     <param name="gicp_correspondence_randomness" value="20" />
     <param name="gicp_max_optimizer_iterations" value="20" />
 
-    <param name="gicp_max_correspondance_distance" value="2.2" />
-    <param name="gicp_max_correspondance_distance_mid_2" value="2.2" />
-    <param name="gicp_max_correspondance_distance_mid" value="2.2" />
-    <param name="gicp_max_correspondance_distance_min" value="2.2" />
+    <param name="gicp_max_correspondance_distance" value="2.5" />
+    <param name="gicp_max_correspondance_distance_mid_2" value="2.5" />
+    <param name="gicp_max_correspondance_distance_mid" value="2.5" />
+    <param name="gicp_max_correspondance_distance_min" value="2.5" />
     <param name="gicp_euclidean_fitness_epsilon" value="1e-12" />
     <param name="gicp_ransac_outlier_threshold" value="1.0" />
     <param name="gicp_reg_resolution" value="1.0" />
@@ -146,7 +146,7 @@
     <!-- optimization params -->
     <!-- typical solvers: gn_var, gn_fix6_3, gn_var_cholmod, lm_var, lm_fix6_3, lm_var_cholmod, ... -->
     <param name="g2o_solver_type" value="lm_var_cholmod" />
-    <param name="g2o_solver_num_iterations" value="512" />
+    <param name="g2o_solver_num_iterations" value="1024" />
     <!-- constraint switches -->
     <param name="enable_gps" value="$(arg enable_gps)" />
     <param name="enable_imu_acceleration" value="$(arg enable_imu_acc)" />
@@ -210,7 +210,7 @@
 
     <!-- buildings params -->
     <!-- 1.0 0.4 -->
-    <param name="building_edge_stddev_xy" value="5.0" />
+    <param name="building_edge_stddev_xy" value="1.0" />
     <param name="building_edge_stddev_z" value="0.0" />
     <param name="building_edge_stddev_q" value="0.0" />
     <param name="b_var_gain_a" value="20" />

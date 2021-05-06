@@ -14,6 +14,7 @@
 #include <g2o/solvers/pcg/linear_solver_pcg.h>
 #include <g2o/edge_se2_priorxy.hpp>
 #include <g2o/edge_se2_priorquat.hpp>
+#include <g2o/edge_se2_pointxy_custom.hpp>
 #include <g2o/robust_kernel_io.hpp>
 
 #include <g2o/types/slam2d/types_slam2d.h>
@@ -26,6 +27,7 @@ G2O_USE_OPTIMIZATION_LIBRARY(csparse)  // be aware of that csparse brings LGPL u
 namespace g2o {
 G2O_REGISTER_TYPE(EDGE_SE2_PRIORXY, EdgeSE2PriorXY)
 G2O_REGISTER_TYPE(EDGE_SE2_PRIORQUAT, EdgeSE2PriorQuat)
+G2O_REGISTER_TYPE(EDGE_SE2_POINTXY_Custom, EdgeSE2PointXYCustom)
 }  // namespace g2o
 
 namespace hdl_graph_slam {
@@ -181,8 +183,8 @@ g2o::EdgeSE2* GraphSLAM::add_se2_edge(g2o::VertexSE2* v1, g2o::VertexSE2* v2, co
   return edge;
 }
 
- g2o::EdgeSE2PointXY* GraphSLAM::add_se2_pointxy_edge(g2o::VertexSE2* v1, g2o::VertexPointXY* v2, const Eigen::Vector2d& relative_pose, const Eigen::MatrixXd& information_matrix){
-  g2o::EdgeSE2PointXY* edge(new g2o::EdgeSE2PointXY());
+ g2o::EdgeSE2PointXYCustom* GraphSLAM::add_se2_pointxy_edge(g2o::VertexSE2* v1, g2o::VertexPointXY* v2, const Eigen::Vector2d& relative_pose, const Eigen::MatrixXd& information_matrix){
+  g2o::EdgeSE2PointXYCustom* edge(new g2o::EdgeSE2PointXYCustom());
   edge->setId(static_cast<int>(graph->edges().size()));
   edge->setMeasurement(relative_pose);
   edge->setInformation(information_matrix);
@@ -208,6 +210,17 @@ g2o::EdgeSE2* GraphSLAM::add_se2_edge(g2o::VertexSE2* v1, g2o::VertexSE2* v2, co
   edge->setMeasurement(relative_pose);
   edge->setInformation(information_matrix);
   edge->vertices()[0] = v1;
+  graph->addEdge(edge);
+
+  return edge;
+ }
+
+ g2o::EdgeXYPrior* GraphSLAM::add_pointxy_prior(g2o::VertexPointXY* v, const Eigen::Vector2d& pose, const Eigen::MatrixXd& information_matrix) {
+  g2o::EdgeXYPrior* edge(new g2o::EdgeXYPrior());
+  edge->setId(static_cast<int>(graph->edges().size()));
+  edge->setMeasurement(pose);
+  edge->setInformation(information_matrix);
+  edge->vertices()[0] = v;
   graph->addEdge(edge);
 
   return edge;
