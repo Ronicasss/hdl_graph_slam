@@ -20,7 +20,7 @@ namespace hdl_graph_slam {
 			Building building;							// building to which the node refers
 			pcl::PointCloud<PointT3>::Ptr referenceSystem;	// pc containing all building points referred to local_origin (from building.geometry) 
 			Eigen::Vector2d local_origin; 				// south-westernmost point of the building wrt zero_utm
-			g2o::VertexPointXY* node;
+			g2o::VertexSE2* node;
 
 			BuildingNode();
 			void setReferenceSystem();

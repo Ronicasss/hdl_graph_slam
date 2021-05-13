@@ -39,6 +39,8 @@ Eigen::MatrixXd InformationMatrixCalculator::calc_information_matrix(const pcl::
 
   double fitness_score = calc_fitness_score(cloud1, cloud2, relpose);
 
+  std::cout << "kf_fitness_score: " << fitness_score << std::endl;
+
   double min_var_x = std::pow(min_stddev_x, 2);
   double max_var_x = std::pow(max_stddev_x, 2);
   double min_var_q = std::pow(min_stddev_q, 2);
@@ -47,10 +49,13 @@ Eigen::MatrixXd InformationMatrixCalculator::calc_information_matrix(const pcl::
   float w_x = weight(var_gain_a, fitness_score_thresh, min_var_x, max_var_x, fitness_score);
   float w_q = weight(var_gain_a, fitness_score_thresh, min_var_q, max_var_q, fitness_score);
 
+  std::cout << "kf_w_x: " << w_x << std::endl;
+  std::cout << "kf_w_q: " << w_q << std::endl;
+
   Eigen::MatrixXd inf = Eigen::MatrixXd::Identity(6, 6);
   inf.topLeftCorner(3, 3).array() /= w_x;
   inf.bottomRightCorner(3, 3).array() /= w_q;
-  //std::cout << "scan matcher inf: " << inf << std::endl;
+  
   return inf;
 }
 
@@ -82,8 +87,7 @@ double InformationMatrixCalculator::calc_fitness_score(const pcl::PointCloud<Poi
     }
   }
 
-  std::cout << "source size: " << input_transformed.points.size() << std::endl;
-  std::cout << "nr: " << nr << std::endl;
+  
 
   if(nr > 0)
     return (fitness_score / nr);
@@ -91,41 +95,31 @@ double InformationMatrixCalculator::calc_fitness_score(const pcl::PointCloud<Poi
     return (std::numeric_limits<double>::max());
 }
 
-Eigen::MatrixXd InformationMatrixCalculator::calc_information_matrix_buildings(const pcl::PointCloud<PointT>::ConstPtr& cloud1, const pcl::PointCloud<PointT>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose) const {
-  //double fitness_score = calc_fitness_score(cloud1, cloud2, relpose);
-  //std::cout << "ft: " << fitness_score << std::endl;
-  double fitness_score = calc_fitness_score(cloud1, cloud2, relpose, 2.0);
-  /*std::cout << "ft_t: " << fitness_score << std::endl;
-  std::cout << "min x: " << b_min_stddev_x << std::endl;
-  std::cout << "max x: " << b_max_stddev_x << std::endl;
-  std::cout << "min q: " << b_min_stddev_q << std::endl;
-  std::cout << "max q: " << b_max_stddev_q << std::endl;*/
+Eigen::MatrixXd InformationMatrixCalculator::calc_information_matrix_buildings(const pcl::PointCloud<PointT3>::ConstPtr& cloud1, const pcl::PointCloud<PointT3>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose) const {
+  
+  double b_fitness_score = calc_fitness_score_buildings(cloud1, cloud2, relpose, 5.0);
+  std::cout << "b_fitness_score: " << b_fitness_score << std::endl;
 
-  double min_var_x = std::pow(b_min_stddev_x, 2);
-  //std::cout << "min_var_x: " << min_var_x << std::endl;
-  double max_var_x = std::pow(b_max_stddev_x, 2);
-  //std::cout << "max_var_x: " << max_var_x << std::endl;
-  double min_var_q = std::pow(b_min_stddev_q, 2);
-  //std::cout << "min_var_q: " << min_var_q << std::endl;
-  double max_var_q = std::pow(b_max_stddev_q, 2);
-  //std::cout << "max_var_q: " << max_var_q << std::endl;
+  double b_min_var_x = std::pow(b_min_stddev_x, 2);
+  double b_max_var_x = std::pow(b_max_stddev_x, 2);
+  double b_min_var_q = std::pow(b_min_stddev_q, 2);
+  double b_max_var_q = std::pow(b_max_stddev_q, 2);
 
-  float w_x = weight(b_var_gain_a, b_fitness_score_thresh, min_var_x, max_var_x, fitness_score);
-  //std::cout << "w_x: " << w_x << std::endl;
-  float w_q = weight(b_var_gain_a, b_fitness_score_thresh, min_var_q, max_var_q, fitness_score);
-  //std::cout << "w_q: " << w_q << std::endl;
-  //std::cout << "var gain: " << b_var_gain_a << std::endl;
-  //std::cout << "score thresh: " << b_fitness_score_thresh << std::endl;
+  float w_x = weight(b_var_gain_a, b_fitness_score_thresh, b_min_var_x, b_max_var_x, b_fitness_score);
+  float w_q = weight(b_var_gain_a, b_fitness_score_thresh, b_min_var_q, b_max_var_q, b_fitness_score);
+
+  std::cout << "w_x: " << w_x << std::endl;
+  std::cout << "w_q: " << w_q << std::endl;
 
   Eigen::MatrixXd inf = Eigen::MatrixXd::Identity(6, 6);
   inf.topLeftCorner(3, 3).array() /= w_x;
   inf.bottomRightCorner(3, 3).array() /= w_q;
-  //std::cout << "buildings inf: " << inf << std::endl;
+  
   return inf;
 }
 
-double InformationMatrixCalculator::calc_fitness_score(const pcl::PointCloud<PointT3>::ConstPtr& cloud1, const pcl::PointCloud<PointT3>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose, double max_range) {
-  std::cout << "PointT3" << std::endl;
+double InformationMatrixCalculator::calc_fitness_score_buildings(boost::shared_ptr<std::vector<int>> src_corr, boost::shared_ptr<std::vector<int>> tgt_corr, const pcl::PointCloud<PointT3>::ConstPtr& cloud1, const pcl::PointCloud<PointT3>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose, double max_range) {
+  std::cout << "dentro fitness" << std::endl;
   pcl::search::KdTree<PointT3>::Ptr tree_(new pcl::search::KdTree<PointT3>());
   tree_->setInputCloud(cloud1);
 
@@ -145,15 +139,51 @@ double InformationMatrixCalculator::calc_fitness_score(const pcl::PointCloud<Poi
     tree_->nearestKSearch(input_transformed.points[i], 1, nn_indices, nn_dists);
 
     // Deal with occlusions (incomplete targets)
-    if(nn_dists[0] < (max_range*max_range)) {
+    if(nn_dists[0] <= max_range) {
       // Add to the fitness score
+      
+      src_corr->push_back(i);
+      tgt_corr->push_back(nn_indices[0]);
+
       fitness_score += nn_dists[0];
       nr++;
     }
   }
 
-  std::cout << "source size: " << input_transformed.points.size() << std::endl;
-  std::cout << "nr: " << nr << "\n" << std::endl;
+  if(nr > 0)
+    return (fitness_score / nr);
+  else
+    return (std::numeric_limits<double>::max());
+}
+
+double InformationMatrixCalculator::calc_fitness_score_buildings(const pcl::PointCloud<PointT3>::ConstPtr& cloud1, const pcl::PointCloud<PointT3>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose, double max_range) {
+  std::cout << "senza corr" << std::endl;
+  pcl::search::KdTree<PointT3>::Ptr tree_(new pcl::search::KdTree<PointT3>());
+  tree_->setInputCloud(cloud1);
+
+  double fitness_score = 0.0;
+
+  // Transform the input dataset using the final transformation
+  pcl::PointCloud<PointT3> input_transformed;
+  pcl::transformPointCloud(*cloud2, input_transformed, relpose.cast<float>());
+
+  std::vector<int> nn_indices(1);
+  std::vector<float> nn_dists(1);
+
+  // For each point in the source dataset
+  int nr = 0;
+  for(size_t i = 0; i < input_transformed.points.size(); ++i) {
+    // Find its nearest neighbor in the target
+    tree_->nearestKSearch(input_transformed.points[i], 1, nn_indices, nn_dists);
+
+    // Deal with occlusions (incomplete targets)
+    if(nn_dists[0] <= max_range) {
+      // Add to the fitness score
+      
+      fitness_score += nn_dists[0];
+      nr++;
+    }
+  }
 
   if(nr > 0)
     return (fitness_score / nr);

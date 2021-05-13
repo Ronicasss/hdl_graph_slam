@@ -88,7 +88,7 @@
     <remap from="/gps/navsat" to="$(arg gps_topic)" />
     <remap from="/gpsimu_driver/imu_data" to="$(arg imu_topic)" />
 
-    <param name="gt_path" value="/home/veronica/Desktop/Thesis/07.txt" />
+    <param name="gt_path" value="/home/veronica/Desktop/Thesis/gt/07.txt" />
     <param name="test_enable_gps_imu" value="false" />
     <param name="enable_ate_calculation" value="true" />
     <param name="enable_buildings" value="true" />
@@ -106,15 +106,18 @@
     <param name="padding" value="1.5" />
     <param name="initial_padding" value="1.5" />
     <param name="enable_padding" value="false" />
+    <param name="print_tf" value="true" />
+    <param name="print_b_tf" value="false" />
+    <param name="cut" value="5.0" />
 
     <param name="ground_floor_max_thresh" value="1" />
     <param name="radius_search" value="0.3" />
     <param name="min_neighbors_in_radius" value="12" />
     <param name="downsample_resolution" value="0.13" />
 
-    <param name="transformation_epsilon" value="0.01" />
-    <param name="maximum_iterations" value="64" />
-    <param name="use_reciprocal_correspondences" value="true" />
+    <param name="gicp_transformation_epsilon" value="0.01" />
+    <param name="gicp_maximum_iterations" value="64" />
+    <param name="gicp_use_reciprocal_correspondences" value="true" />
     <param name="gicp_correspondence_randomness" value="20" />
     <param name="gicp_max_optimizer_iterations" value="20" />
 
@@ -140,13 +143,23 @@
     <param name="enable_gicp_euclidean_fitness_epsilon" value="false" />
     <param name="enable_gicp_ransac_outlier_threshold" value="false" />
 
+
+    <!-- ******************************************************************************** -->
+    <param name="b_reg_num_threads" value="0" />
+    <param name="b_reg_transformation_epsilon" value="0.001"/>
+    <param name="b_reg_maximum_iterations" value="64"/>
+    
+    <param name="b_reg_resolution" value="2.0" />
+    <param name="b_reg_nn_search_method" value="DIRECT7" />
+    <!-- ******************************************************************************** -->
+
     <!-- frame settings -->
     <param name="map_frame_id" value="$(arg map_frame_id)" />
     <param name="odom_frame_id" value="$(arg lidar_odom_frame_id)" />
     <!-- optimization params -->
     <!-- typical solvers: gn_var, gn_fix6_3, gn_var_cholmod, lm_var, lm_fix6_3, lm_var_cholmod, ... -->
     <param name="g2o_solver_type" value="lm_var_cholmod" />
-    <param name="g2o_solver_num_iterations" value="1024" />
+    <param name="g2o_solver_num_iterations" value="512" />
     <!-- constraint switches -->
     <param name="enable_gps" value="$(arg enable_gps)" />
     <param name="enable_imu_acceleration" value="$(arg enable_imu_acc)" />
@@ -199,10 +212,10 @@
     <param name="odometry_edge_robust_kernel_size" value="1.0" />
     <param name="loop_closure_edge_robust_kernel" value="Huber" />
     <param name="loop_closure_edge_robust_kernel_size" value="1.0" />
-    <param name="use_const_inf_matrix" value="true" />
+    <param name="use_const_inf_matrix" value="false" />
     <param name="const_stddev_x" value="0.5" />
     <param name="const_stddev_q" value="0.1" />
-    <param name="var_gain_a" value="20.0" />
+    <param name="var_gain_a" value="5.0" />
     <param name="min_stddev_x" value="0.1" />
     <param name="max_stddev_x" value="5.0" />
     <param name="min_stddev_q" value="0.05" />
@@ -213,13 +226,13 @@
     <param name="building_edge_stddev_xy" value="1.0" />
     <param name="building_edge_stddev_z" value="0.0" />
     <param name="building_edge_stddev_q" value="0.0" />
-    <param name="b_var_gain_a" value="20" />
+    <param name="b_var_gain_a" value="1.0" />
     <param name="b_min_stddev_x" value="0.1" />
-    <param name="b_max_stddev_x" value="3" />
-    <param name="b_min_stddev_q" value="0.05" />
-    <param name="b_max_stddev_q" value="0.2" />
-    <param name="b_fitness_score_thresh" value="2" />
-    <param name="b_use_const_inf_matrix" value="true" />
+    <param name="b_max_stddev_x" value="50.0" />
+    <param name="b_min_stddev_q" value="0.1" />
+    <param name="b_max_stddev_q" value="5.0" />
+    <param name="b_fitness_score_thresh" value="2.5" />
+    <param name="b_use_const_inf_matrix" value="false" />
 
     <!-- update params -->
     <param name="graph_update_interval" value="3.0" />

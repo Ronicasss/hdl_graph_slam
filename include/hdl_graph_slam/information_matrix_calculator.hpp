@@ -33,15 +33,22 @@ public:
   }
 
   static double calc_fitness_score(const pcl::PointCloud<PointT>::ConstPtr& cloud1, const pcl::PointCloud<PointT>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose, double max_range = std::numeric_limits<double>::max());
-  static double calc_fitness_score(const pcl::PointCloud<PointT3>::ConstPtr& cloud1, const pcl::PointCloud<PointT3>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose, double max_range = std::numeric_limits<double>::max());
-
+  static double calc_fitness_score_buildings(boost::shared_ptr<std::vector<int>> src_corr, boost::shared_ptr<std::vector<int>> tgt_corr, const pcl::PointCloud<PointT3>::ConstPtr& cloud1, const pcl::PointCloud<PointT3>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose, double max_range = std::numeric_limits<double>::max());
+  static double calc_fitness_score_buildings(const pcl::PointCloud<PointT3>::ConstPtr& cloud1, const pcl::PointCloud<PointT3>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose, double max_range = std::numeric_limits<double>::max());
 
   Eigen::MatrixXd calc_information_matrix(const pcl::PointCloud<PointT>::ConstPtr& cloud1, const pcl::PointCloud<PointT>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose) const;
-  Eigen::MatrixXd calc_information_matrix_buildings(const pcl::PointCloud<PointT>::ConstPtr& cloud1, const pcl::PointCloud<PointT>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose) const;
+  Eigen::MatrixXd calc_information_matrix_buildings(const pcl::PointCloud<PointT3>::ConstPtr& cloud1, const pcl::PointCloud<PointT3>::ConstPtr& cloud2, const Eigen::Isometry3d& relpose) const;
 
 private:
   double weight(double a, double max_x, double min_y, double max_y, double x) const {
+    /*std::cout << "a: " << a << std::endl;
+    std::cout << "max_x: " << max_x << std::endl;
+    std::cout << "min_y: " << min_y << std::endl;
+    std::cout << "max_y: " << max_y << std::endl;*/
+    std::cout << "x: " << x << std::endl;
     double y = (1.0 - std::exp(-a * x)) / (1.0 - std::exp(-a * max_x));
+    //y = 1 - y;
+    std::cout << "y: " << y << std::endl;
     return min_y + (max_y - min_y) * y;
   }
 

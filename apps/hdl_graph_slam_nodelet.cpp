@@ -72,6 +72,7 @@
 #include <g2o/types/slam2d/vertex_se2.h>
 #include <pcl/filters/crop_hull.h>
 #include <pcl/surface/convex_hull.h>
+#include <pclomp/ndt_omp.h>
 
 namespace hdl_graph_slam {
 
@@ -139,7 +140,7 @@ public:
     gt_markers_pub = mt_nh.advertise<visualization_msgs::Marker>("/hdl_graph_slam/gt_markers", 16);
     first_guess = true;
     prev_guess = Eigen::Matrix4f::Identity();
-    fix_first_building = true;
+    fix_first_building = private_nh.param<bool>("fix_first_building", true);
     reset_gicp = false;
     reset_counter = 0;
     dist_last_kf = 0.0;
@@ -671,7 +672,7 @@ private:
                 A.linear() = R;
                 A.translation() = T;
                 // set the node
-                bt->node = graph_slam->add_pointxy_node(T); 
+                bt->node = graph_slam->add_se2_node(A); 
                 
                 if(fix_first_building) {
                   if(private_nh.param<bool>("fix_first_building", true)) {
@@ -706,7 +707,7 @@ private:
                 /**********************************************************************************/
                 if(private_nh.param<bool>("estimated_building_cloud", true)) {
 
-                  Eigen::Isometry3d est = isometry2dto3d(getIsoFromTrans(bntemp->node->estimate()));
+                  Eigen::Isometry3d est = isometry2dto3d(bntemp->node->estimate().toIsometry());
                   pcl::PointCloud<PointT3>::Ptr temp_cloud_7(new pcl::PointCloud<PointT3>);
                   pcl::transformPointCloud(*(bntemp->referenceSystem), *temp_cloud_7, est.matrix());
                   *buildingsCloud += *temp_cloud_7;
@@ -719,7 +720,7 @@ private:
                 bnodes.push_back(bntemp);
               }
             }
-            std::cout << "heree" << std::endl;
+           
             buildingsCloud->header.frame_id = "map";
             // publish buildings cloud
             sensor_msgs::PointCloud2Ptr b_cloud_msg(new sensor_msgs::PointCloud2());
@@ -755,98 +756,10 @@ private:
               reset_counter = 1;
             reset_gicp = false;
             dist_last_kf = keyframe->accum_distance;
-
-            /**********************************************************************************************************************/
-            pcl::PointCloud<PointT3>::Ptr temp_cloud_10(new pcl::PointCloud<PointT3>);
-            pcl::PointCloud<PointT3>::Ptr temp_cloud_12(new pcl::PointCloud<PointT3>);
-
-            if(reset_counter == 0 && private_nh.param<bool>("enable_padding", false) && !first_guess) {
-              pcl::PointCloud<PointT3>::Ptr temp_cloud_8(new pcl::PointCloud<PointT3>);
-              
-              pcl::copyPointCloud(*odomCloud, *temp_cloud_8);
-              pcl::transformPointCloud(*temp_cloud_8, *temp_cloud_8, guess);
-              temp_cloud_8->header.frame_id = "map";
-             
-              
-              for(auto it1 = bnodes.begin(); it1 != bnodes.end(); it1++)
-              {
-                //std::cout << "here" << std::endl;
-                BuildingNode::Ptr bntemp = *it1;
-
-                pcl::PointCloud<PointT3>::Ptr temp_cloud_9(new pcl::PointCloud<PointT3>);
-                pcl::PointCloud<PointT3>::Ptr temp_cloud_11(new pcl::PointCloud<PointT3>);
-                if(private_nh.param<bool>("estimated_building_cloud", true)) {
-                  Eigen::Isometry3d est = isometry2dto3d(getIsoFromTrans(bntemp->node->estimate()));
-                  //std::cout << "est: " << est.matrix() << std::endl;
-                  
-                  pcl::transformPointCloud(*(bntemp->setVerticesReferenceSystem()), *temp_cloud_9, est.matrix());
-                }
-                else {
-                  temp_cloud_9 = bntemp->building.vertices;
-                }
-                add_remove_padding_hull(*temp_cloud_9, *temp_cloud_11, private_nh.param<double>("initial_padding", 1.0));
-                
-                //std::cout << "size 9: " << temp_cloud_9->size() << std::endl;
-                /*for(int j = 0; j < temp_cloud_9->size(); j++) {
-                  std::cout << "p" << j <<": " << temp_cloud_9->at(j) << std::endl;
-                }*/
-                //std::cout << "size 11: " << temp_cloud_11->size() << std::endl;
-
-                std::vector<pcl::Vertices> indices;
-                /*pcl::ConvexHull<PointT3> convexHull;
-                convexHull.setInputCloud(temp_cloud_11);
-                convexHull.reconstruct(indices);*/
-                
-                pcl::Vertices v;
-                for(int k = 0; k <= temp_cloud_11->size(); k++) {
-                  //std::cout << "k: " << k << " " << indices[0].vertices[k] << std::endl;
-
-                  v.vertices.push_back(k);
-                }
-                indices.push_back(v);
-                
-                temp_cloud_9.reset(new pcl::PointCloud<PointT3>);
-
-                pcl::CropHull<PointT3> cropHull;
-                cropHull.setHullIndices(indices);
-                cropHull.setHullCloud(temp_cloud_11);
-                cropHull.setDim(2);
-                cropHull.setInputCloud(temp_cloud_8);
-                cropHull.filter(*temp_cloud_9);
-
-                //std::cout << "size 8: " << temp_cloud_8->size() << std::endl;
-                //std::cout << "size 9 2: " << temp_cloud_9->size() << std::endl;
-                
-                *temp_cloud_12 += *temp_cloud_11;
-                *temp_cloud_10 += *temp_cloud_9;
-              }
-              pcl::transformPointCloud(*temp_cloud_10, *temp_cloud_10, guess.inverse());
-
-              sensor_msgs::PointCloud2Ptr temp_cloud_msg(new sensor_msgs::PointCloud2());
-              pcl::toROSMsg(*temp_cloud_12, *temp_cloud_msg);
-              temp_cloud_msg->header.frame_id = "map";
-              temp_cloud_msg->header.stamp = keyframe->stamp;
-              temp_pub.publish(temp_cloud_msg); 
-
-              sensor_msgs::PointCloud2Ptr oc_cloud_msg(new sensor_msgs::PointCloud2());
-              pcl::toROSMsg(*temp_cloud_8, *oc_cloud_msg);
-              oc_cloud_msg->header.frame_id = "map";
-              oc_cloud_msg->header.stamp = keyframe->stamp;
-              original_odom_pub.publish(oc_cloud_msg);
-            } else {
-              //std::cout << "here not" << std::endl;
-              pcl::copyPointCloud(*odomCloud, *temp_cloud_10);
-            }
             first_guess = false;
-            /*****************************************************************************************************************************/
             
-            Eigen::Isometry3d guess_iso;
-            guess_iso.matrix() = guess.cast<double>();
-            double ft1 = InformationMatrixCalculator::calc_fitness_score(buildingsCloud, temp_cloud_10, guess_iso, 1.0);
-            std::cout << "FT1: " << ft1 << std::endl; 
             
-
-            std::cout << "dist: " << keyframe->accum_distance << std::endl;
+           
             pcl::registration::WarpPointRigid3D<PointT3, PointT3>::Ptr warp_fcn(new pcl::registration::WarpPointRigid3D<PointT3,PointT3>);
             pcl::registration::TransformationEstimationLM<PointT3, PointT3>::Ptr te(new pcl::registration::TransformationEstimationLM<PointT3, PointT3>);
             te->setWarpFunction(warp_fcn);
@@ -859,20 +772,40 @@ private:
             else
               gicp->setResolution(private_nh.param<double>("gicp_initial_reg_resolution", 2.0));
             */
+
+            double ndt_resolution = private_nh.param<double>("b_reg_resolution", 0.5);
+            int num_threads = private_nh.param<int>("b_reg_num_threads", 0);
+            std::string nn_search_method = private_nh.param<std::string>("b_reg_nn_search_method", "DIRECT7");
+            std::cout << "registration: NDT_OMP " << nn_search_method << " " << ndt_resolution << " (" << num_threads << " threads)" << std::endl;
+            boost::shared_ptr<pclomp::NormalDistributionsTransform<PointT3, PointT3>> gicp(new pclomp::NormalDistributionsTransform<PointT3, PointT3>());
+            if(num_threads > 0) {
+              gicp->setNumThreads(num_threads);
+            }
+            gicp->setTransformationEpsilon(private_nh.param<double>("b_reg_transformation_epsilon", 0.01));
+            gicp->setMaximumIterations(private_nh.param<int>("b_reg_maximum_iterations", 64));
+
+            gicp->setResolution(ndt_resolution);
+            if(nn_search_method == "KDTREE") {
+              gicp->setNeighborhoodSearchMethod(pclomp::KDTREE);
+            } else if(nn_search_method == "DIRECT1") {
+              gicp->setNeighborhoodSearchMethod(pclomp::DIRECT1);
+            } else {
+              gicp->setNeighborhoodSearchMethod(pclomp::DIRECT7);
+            }
             
             //std::cout << "registration: FAST_GICP" << std::endl;
             //boost::shared_ptr<fast_gicp::FastGICP<PointT3, PointT3>> gicp(new fast_gicp::FastGICP<PointT3, PointT3>());
             //gicp->setNumThreads(private_nh.param<int>("reg_num_threads", 0));
 
-            std::cout << "registration: GICP_OMP" << std::endl;
+            /*std::cout << "registration: GICP_OMP" << std::endl;
             boost::shared_ptr<GeneralizedIterativeClosestPoint_Exposed<PointT3, PointT3>> gicp(new GeneralizedIterativeClosestPoint_Exposed<PointT3, PointT3>());
 
             if(private_nh.param<bool>("enable_transformation_epsilon", true))
-              gicp->setTransformationEpsilon(private_nh.param<double>("transformation_epsilon", 0.01));
+              gicp->setTransformationEpsilon(private_nh.param<double>("gicp_transformation_epsilon", 0.01));
             if(private_nh.param<bool>("enable_maximum_iterations", true))
-              gicp->setMaximumIterations(private_nh.param<int>("maximum_iterations", 64));
+              gicp->setMaximumIterations(private_nh.param<int>("gicp_maximum_iterations", 64));
             if(private_nh.param<bool>("enable_use_reciprocal_correspondences", true))
-              gicp->setUseReciprocalCorrespondences(private_nh.param<bool>("use_reciprocal_correspondences", false));
+              gicp->setUseReciprocalCorrespondences(private_nh.param<bool>("gicp_use_reciprocal_correspondences", false));
             if(private_nh.param<bool>("enable_gicp_correspondence_randomness", true))
               gicp->setCorrespondenceRandomness(private_nh.param<int>("gicp_correspondence_randomness", 20));
             if(private_nh.param<bool>("enable_gicp_max_optimizer_iterations", true))
@@ -888,13 +821,6 @@ private:
             if(reset_counter == 1) {
               gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance", 15.0));
               std::cout << "setting to " << private_nh.param<double>("gicp_max_correspondance_distance", 15.0) << std::endl;
-            /*}
-            else if(reset_counter == 2) {
-              gicp->setMaxCorrespondenceDistance(2.0);
-              std::cout << "setting to 2" << std::endl;
-            } else if(reset_counter == 3) {
-              gicp->setMaxCorrespondenceDistance(3.0);
-              std::cout << "setting to 3" << std::endl;*/
             } else if(reset_counter == 2) {
               gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance_mid", 2.0));
               std::cout << "setting to " << private_nh.param<double>("gicp_max_correspondance_distance_mid", 2.0) << std::endl;
@@ -908,14 +834,15 @@ private:
 
 
             //gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance", 1.0));
-            std::cout << "max dist: " << gicp->getMaxCorrespondenceDistance() << std::endl;
-            std::cout << "ransac: " << gicp->getRANSACOutlierRejectionThreshold() << std::endl;
-            std::cout << "fitness: " << gicp->getEuclideanFitnessEpsilon() << std::endl;
+            //std::cout << "ransac: " << gicp->getRANSACOutlierRejectionThreshold() << std::endl;
+            //std::cout << "fitness: " << gicp->getEuclideanFitnessEpsilon() << std::endl;
 
-           
-            gicp->setTransformationEstimation(te);
+            
+            gicp->setTransformationEstimation(te);*/
+            std::cout << "max dist: " << gicp->getMaxCorrespondenceDistance() << std::endl;
+            
             gicp->setInputTarget(buildingsCloud);
-            gicp->setInputSource(temp_cloud_10);
+            gicp->setInputSource(odomCloud);
             pcl::PointCloud<PointT3>::Ptr aligned(new pcl::PointCloud<PointT3>());
             gicp->align(*aligned, guess);
             std::cout << "has converged:" << gicp->hasConverged() << " score: " << gicp->getFitnessScore() << std::endl;
@@ -932,46 +859,38 @@ private:
             transformed_pub.publish(aligned);
 
             Eigen::Matrix3d t_s_bs = matrix4dto3d(transformation.cast<double>());
-
+         
             
-            std::cout << "t_s_bs: " << t_s_bs << std::endl;
-            std::cout << "odom: " << (keyframe->odom).matrix() << std::endl;
-            
-            Eigen::MatrixXd information_matrix = Eigen::MatrixXd::Identity(2, 2);
+            Eigen::MatrixXd information_matrix = Eigen::MatrixXd::Identity(3, 3);
             if(private_nh.param<bool>("b_use_const_inf_matrix", false)) {
               information_matrix.topLeftCorner(2, 2).array() /= private_nh.param<float>("building_edge_stddev_xy", 0.25);
-              //information_matrix(2, 2) /= private_nh.param<float>("building_edge_stddev_q", 1);
+              information_matrix(2, 2) /= private_nh.param<float>("building_edge_stddev_q", 1);
             } else {
-              // pc XYZI needed to compute the information matrix 
-              pcl::PointCloud<PointT>::Ptr btempcloud(new pcl::PointCloud<PointT>);
-              pcl::copyPointCloud(*buildingsCloud,*btempcloud); // convert pcl buildings pxyz to pxyzi
-              pcl::PointCloud<PointT>::Ptr otempcloud(new pcl::PointCloud<PointT>);
-              pcl::copyPointCloud(*odomCloud,*otempcloud); // convert pcl odom pxyz to pxyzi
               Eigen::MatrixXd information_matrix_6 = Eigen::MatrixXd::Identity(6, 6);
 
               Eigen::Isometry3d t_s_bs_iso = Eigen::Isometry3d::Identity();
               t_s_bs_iso.matrix() = transformation.cast<double>(); 
-              information_matrix_6 = inf_calclator->calc_information_matrix_buildings(btempcloud, otempcloud, t_s_bs_iso);
+              information_matrix_6 = inf_calclator->calc_information_matrix_buildings(buildingsCloud, odomCloud, t_s_bs_iso);
             
               information_matrix.block<2,2>(0,0) = information_matrix_6.block<2,2>(0,0);
-              //information_matrix(2,2) = information_matrix_6(5,5);
+              information_matrix(2,2) = information_matrix_6(5,5);
             }
-            std::cout << "buildings inf: " << information_matrix << std::endl;
+            std::cout << "BUILDINGS INF: " << information_matrix << std::endl;
 
             Eigen::Isometry2d t_s_bs_iso = Eigen::Isometry2d::Identity();
             t_s_bs_iso.matrix() = t_s_bs;
 
-            double ft = InformationMatrixCalculator::calc_fitness_score(buildingsCloud, odomCloud, isometry2dto3d(t_s_bs_iso), 1.0);
+            double ft = InformationMatrixCalculator::calc_fitness_score_buildings(buildingsCloud, odomCloud, isometry2dto3d(t_s_bs_iso), 1.0);
             if(ft > 0.3) {
               if(reset_counter == 1) {
                 reset_counter = 1;
-                std::cout << "fitness score too high 0.3 = 1" << std::endl;
+                //std::cout << "fitness score too high 0.3 = 1" << std::endl;
               }
               else if(ft > 0.35) {
                 reset_counter = 3;
               } else {
                 reset_counter = 2;
-                std::cout << "fitness score too high 0.3 = 2" << std::endl;
+                //std::cout << "fitness score too high 0.3 = 2" << std::endl;
               }
             /*} else if(ft > 0.25) {
               if(reset_counter == 1) {
@@ -983,29 +902,16 @@ private:
               }*/
             } else {
               reset_counter = 0;
-              std::cout << "fitness score low = 0" << std::endl;
+              //std::cout << "fitness score low = 0" << std::endl;
             }
 
 
             Eigen::Isometry2d temp = t_s_bs_iso*(keyframe->odom);
-            std::cout << "temp: " << temp.matrix() << std::endl;
-            
-              std::cout << "score 1: " << InformationMatrixCalculator::calc_fitness_score(buildingsCloud, odomCloud, isometry2dto3d(t_s_bs_iso), 1.0) << std::endl;
-            
-            //std::cout << "temp: " << temp.matrix() << std::endl;
-            //std::cout << "est: " << keyframe->node->estimate().toIsometry().matrix() << std::endl;
-            //std::cout << "smth: " << (temp.matrix().inverse())*(keyframe->node->estimate().toIsometry().matrix()) << std::endl;
-
+           
+           
               std::cout << "kf id: " << keyframe->id() << std::endl;
-              trans_odom2map_mutex.lock();
-            Eigen::Isometry2d odom2map(trans_odom2map.cast<double>());
-            trans_odom2map_mutex.unlock();
-            std::cout << "odom2map: " << odom2map.matrix() << std::endl;
-              Eigen::Matrix3d prova = odom2map.matrix().inverse() * t_s_bs;
-              std::cout << "t_s_bs nuova 1: " << prova << std::endl;
-
-              Eigen::Isometry2d prova2 = keyframe->node->estimate().toIsometry() * keyframe->odom.inverse();
-              std::cout << "odom2map 2: " << prova2.matrix() << std::endl;
+              
+             
 
             if(fix_first_building) {
               if(private_nh.param<bool>("fix_first_building", true)) {
@@ -1024,8 +930,8 @@ private:
               //std::cout << "t_s_bs nuova 2: " << prova << std::endl;
             } 
             else {
-               Eigen::MatrixXd inf = Eigen::MatrixXd::Identity(3, 3);
-                inf.topLeftCorner(2, 2).array() /= private_nh.param<float>("const_stddev_x", 0.25);
+              Eigen::MatrixXd inf = Eigen::MatrixXd::Identity(3, 3);
+              inf.topLeftCorner(2, 2).array() /= private_nh.param<float>("const_stddev_x", 0.25);
               
               std::cout << "adding se2 edges" << std::endl;
               //auto edge = graph_slam->add_se2_edge_prior(keyframe->node, temp, inf); 
@@ -1035,13 +941,24 @@ private:
               //graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
 
               // t_s_bs in map frame
-              geometry_msgs::TransformStamped ts = matrix2transform2d(keyframe->stamp, (keyframe->node->estimate().toIsometry().matrix()).cast<float>(), "map", "kf_"+std::to_string(keyframe->id()));
-              b_tf_broadcaster.sendTransform(ts);
+              if(private_nh.param<bool>("print_tf", false)) {
+                geometry_msgs::TransformStamped ts = matrix2transform2d(keyframe->stamp, (keyframe->node->estimate().toIsometry().matrix()).cast<float>(), "map", "kf_"+std::to_string(keyframe->id()));
+                b_tf_broadcaster.sendTransform(ts);
+              }
 
               // t_s_bs in kf frame
               //geometry_msgs::TransformStamped ts4 = matrix2transform2d(keyframe->stamp, (prova).cast<float>(), "kf_"+std::to_string(keyframe->index), "t_s_bs"+std::to_string(keyframe->index));
               //b_tf_broadcaster.sendTransform(ts4);
-              
+
+              pcl::PointCloud<PointT3>::Ptr pcl_temp(new pcl::PointCloud<PointT3>());
+              boost::shared_ptr<std::vector<int>> src_corr(new std::vector<int>()), tgt_corr(new std::vector<int>());
+  
+                InformationMatrixCalculator::calc_fitness_score_buildings(src_corr, tgt_corr, buildingsCloud, odomCloud, isometry2dto3d(t_s_bs_iso), private_nh.param<double>("cut", 1.0));
+                /*std::cout << "src_corr_size: " << src_corr->size() << std::endl;
+                std::cout << "tgt_corr_size: " << tgt_corr->size() << std::endl;
+                std::cout << "buildings_size: " << buildingsCloud->size() << std::endl;
+                std::cout << "odom_size: " << odomCloud->size() << std::endl;*/
+
               // add edges
               for(auto it1 = bnodes.begin(); it1 != bnodes.end(); it1++)
               {
@@ -1050,7 +967,7 @@ private:
 
                 Eigen::Matrix3d t_bs_b = Eigen::Matrix3d::Identity();
                 //t_bs_b.block<2,1>(0, 2) = bntemp->local_origin;
-                t_bs_b.block<2,1>(0, 2) = bntemp->node->estimate();
+                t_bs_b = bntemp->node->estimate().toIsometry().matrix();
                 Eigen::Matrix3d temp1 = t_s_bs*keyframe->odom.matrix();
                 
                 Eigen::Matrix3d t_s_b = (t_bs_b.inverse())*temp1;
@@ -1058,214 +975,121 @@ private:
                 t_s_b_iso.matrix() = t_s_b.inverse();
 
                 
-                /********************/
-                // find last edge = edge with highest id
-                std::vector<int> ids;
-            
-                auto edge_itr2 = bntemp->node->edges().begin();
+                /*****************************************************************************/
                 
-                for(int i = 0; edge_itr2 != bntemp->node->edges().end(); edge_itr2++, i++) {
-                  g2o::HyperGraph::Edge* edge = *edge_itr2;
-                  g2o::EdgeSE2PointXYCustom* edge_se2xy = dynamic_cast<g2o::EdgeSE2PointXYCustom*>(edge);
-                  //edge_se2xy->setLevel(0);
-                  ids.push_back(edge_se2xy->id());
-                }
+                
+                /*Eigen::Isometry3d est = isometry2dto3d(bntemp->node->estimate().toIsometry());
+                pcl::PointCloud<PointT3>::Ptr b_pcl(new pcl::PointCloud<PointT3>);
+                pcl::transformPointCloud(*(bntemp->referenceSystem), *b_pcl, est.matrix());
+                
+                int k = 0;
+                double mean_dist = 0.0;
 
-                //std::cout << "prima" << std::endl;
-                //for(int j=0;j<ids.size();j++) {
-                //  std::cout << "ids " << ids[j] << std::endl;
-                //}
-                //std::cout << "dopo" << std::endl;
-                if(ids.size() > private_nh.param<int>("edges_to_use", 1)) {
-                  std::sort(ids.begin(), ids.end(), std::greater<int>());
-                  ids.resize(private_nh.param<int>("edges_to_use", 1));
-                }
-                /*std::cout << "prima 2" << std::endl;
-                for(int j=0;j<ids.size();j++) {
-                  std::cout << "ids " << ids[j] << std::endl;
-                }
-                std::cout << "dopo 2" << std::endl;*/
-                /*******************
-                if(ids.size() > 0) {
-                  auto edge_itr = bntemp->node->edges().begin();
-                  for(int i = 0; edge_itr != bntemp->node->edges().end(); edge_itr++, i++) {
-                    g2o::HyperGraph::Edge* edge = *edge_itr;
-                    g2o::EdgeSE2PointXY* edge_se2_xy = dynamic_cast<g2o::EdgeSE2PointXY*>(edge);
-                    if(edge_se2_xy->id() == ids[0])
+                for(int i = 0; i < tgt_corr->size(); i++) {
+                  PointT3 pt = buildingsCloud->at(tgt_corr->at(i));
+                  int j = 0;
+                  for(j = 0; j < b_pcl->size(); j++) {
+                    PointT3 b_pt = b_pcl->at(j);
+                    if(pt.x == b_pt.x && pt.y == b_pt.y)
                       break;
                   }
-                  g2o::HyperGraph::Edge* hp_last_edge = *edge_itr;
-                  g2o::EdgeSE2PointXY* last_edge = dynamic_cast<g2o::EdgeSE2PointXY*>(hp_last_edge);
-                  Eigen::Vector2d last_meas = (last_edge)->measurement();
-                  Eigen::Isometry2d temp1 = Eigen::Isometry2d::Identity();
-                  temp1.translation() = last_meas;
-                  g2o::VertexSE2* v = dynamic_cast<g2o::VertexSE2*>(last_edge->vertices()[0]);
-                  Eigen::Isometry2d temp2 = (v->estimate().toIsometry())*temp1;
-                  Eigen::Vector2d p1 = temp2.translation();
-
-                  //Eigen::Isometry2d temp = (keyframe->node->estimate().toIsometry())*t_s_b_iso;
-                  //Eigen::Vector2d p2 = temp.translation();
-                  Eigen::Vector2d p2 = bntemp->node->estimate();
-                  double dx = p1(0) - p2(0);
-                  double dy = p1(1) - p2(1);
-                  double dist = sqrt((dx*dx)+(dy*dy));
-                  std::cout << "dist: " << dist << std::endl;
-
-                  if(dist > private_nh.param<double>("edges_dist", 0.5)) {
-                    std::cout << "DISTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
-                    if(ids.size() > private_nh.param<int>("edges_to_use", 1)) {
-                      ids.resize(private_nh.param<int>("edges_to_use", 1));
-                    }
-                    auto edge_itr3 = bntemp->node->edges().begin();
-                    for(int i = 0; edge_itr3 != bntemp->node->edges().end(); edge_itr3++, i++) {
-                      g2o::HyperGraph::Edge* edge = *edge_itr3;
-                      g2o::EdgeSE2PointXY* edge_se2_xy = dynamic_cast<g2o::EdgeSE2PointXY*>(edge);
-                      if(std::find(ids.begin(), ids.end(), edge_se2_xy->id()) != ids.end()) {
-                        std::cout << "ids_yes " <<  edge_se2_xy->id() << std::endl;
-                      } else {
-                        std::cout << "ids_no " << edge_se2_xy->id() << std::endl;
-                        edge_se2_xy->setLevel(1);
-                      }
-                    }
-                  }
-                }
-                /********************/
-                
-                //std::cout << "prima 3" << std::endl;
-                if(bntemp->node->edges().size() > 0) {
-                  auto edge_itr = bntemp->node->edges().begin();
-                  for(int i = 0; edge_itr != bntemp->node->edges().end(); edge_itr++, i++) {
+                  if(j != b_pcl->size()) {
                     
-                    g2o::HyperGraph::Edge* edge = *edge_itr;
-                  
-                    g2o::EdgeSE2PointXYCustom* edge_se3 = dynamic_cast<g2o::EdgeSE2PointXYCustom*>(edge);
+                    pcl_temp->push_back(aligned->at(src_corr->at(i)));
+                    double dx = (aligned->at(src_corr->at(i))).x - pt.x;
                    
-                    if(std::find(ids.begin(), ids.end(), edge_se3->id()) != ids.end()) {
-                      //std::cout << "ids_yes " <<  edge_se3->id() << std::endl;
-                      edge_se3->setLevel(0);
-                    } else {
-                      //std::cout << "ids_no " <<  edge_se3->id() << std::endl;
-                     edge_se3->setLevel(1);
-                    }
+                    double dy = (aligned->at(src_corr->at(i))).y - pt.y;
+                    
+                    double dist = sqrt(dx*dx + dy*dy);
+                   
+
+                   mean_dist += dist;
+                   k++;
+                   
                   }
                 }
-                //std::cout << "dopo 3" << std::endl;
 
-                
-                //std::cout << "dopo" << std::endl;
-                
-                /*if(((int)(bntemp->node->edges().size())) > 0) {
-                  //std::cout << "dopo1" << std::endl;
-                  g2o::HyperGraph::Edge* last_edge = *edge_itr;
-                  
-                  g2o::EdgeSE2PointXY* last_edge_pointxy = dynamic_cast<g2o::EdgeSE2PointXY*>(last_edge);
-              
-                  Eigen::Vector2d measv = (last_edge_pointxy)->measurement();
+                double temp_ft = 0.0;
+                if(k > 0) {
+                  temp_ft = (mean_dist/k);
+                }
+                std::cout << "b_id: " << bntemp->node->id() << std::endl;
+                std::cout << "k: " << k << std::endl;
+                std::cout << "ft: " << temp_ft << std::endl; 
+
+                Eigen::MatrixXd inf = Eigen::MatrixXd::Identity(3, 3);
+                if(k > 0) {
+                  double x = temp_ft;
+                  double a = private_nh.param<double>("b_var_gain_a", 20.0);
+                  //std::cout << "a: " << a << std::endl;
                  
-                  Eigen::Matrix3d temp = Eigen::Matrix3d::Identity();
-                
-                  g2o::VertexSE2* v = dynamic_cast<g2o::VertexSE2*>(last_edge_pointxy->vertices()[0]);
-              
+                  double min_y = std::pow(private_nh.param<double>("b_min_stddev_x", 0.1), 2);
+                  //std::cout << "min_y: " << min_y << std::endl;
+                  double max_y = std::pow(private_nh.param<double>("b_max_stddev_x", 5.0), 2);
+                  //std::cout << "max_y: " << max_y << std::endl;
+                  double min_y_q = std::pow(private_nh.param<double>("b_min_stddev_q", 0.05), 2);
+                  //std::cout << "min_y_q: " << min_y_q << std::endl;
+                  double max_y_q = std::pow(private_nh.param<double>("b_max_stddev_q", 0.2), 2);
+                  //std::cout << "max_y_q: " << max_y_q << std::endl;
 
-                  std::cout << "measv: " << measv << std::endl;
-                  
-                  //geometry_msgs::TransformStamped ts5 = matrix2transform2d(keyframe->stamp,  temp.cast<float>(), "kf_"+std::to_string(v->id()), "tsb1_" + bntemp->building.id);
-                  //b_tf_broadcaster.sendTransform(ts5);
-                  //std::cout << "dopo dopo" << std::endl;
+                  double max_x = private_nh.param<double>("b_fitness_score_thresh", 0.5);
+                  //std::cout << "max_x: " << max_x << std::endl;
 
-                
+                  double y = (1.0 - std::exp(-a * x)) / (1.0 - std::exp(-a * max_x));
+                  y = 1-y;
+                  std::cout << "y: " << y << std::endl;
+                  double w_x = min_y + (max_y - min_y) * y;
+                  double w_q = min_y_q + (max_y_q - min_y_q) * y;
 
-                }*/
-                
-                /*std::cout << "est: " << ((keyframe->node->estimate().toIsometry())*t_s_b_iso).translation() << std::endl;
-                std::cout << "b: " << bntemp->node->estimate() << std::endl;
-                Eigen::Vector2d p1 = ((keyframe->node->estimate().toIsometry())*t_s_b_iso).translation();
-                  Eigen::Vector2d p2 = bntemp->node->estimate();
-                  double dx = p1(0) - p2(0);
-                  double dy = p1(1) - p2(1);
-                  double dist = sqrt((dx*dx)+(dy*dy));
-                  std::cout << "dist: " << dist << std::endl;
+                  std::cout << "w_x: " << w_x << std::endl;
+                  std::cout << "w_q: " << w_q << std::endl;
 
-                if(dist > 0.19) {
-                  auto edge_itr = bntemp->node->edges().begin();
-                  for(int i = 0; i < bntemp->node->edges().size(); edge_itr++, i++) {
-                    if(i > 0) {
-                      std::cout << "SETTING TO 11111111111111111111111111111111111111111" <<  std::endl;
-                      g2o::HyperGraph::Edge* edge = *edge_itr;
-                      g2o::EdgeSE2PointXY* edge_se3 = dynamic_cast<g2o::EdgeSE2PointXY*>(edge);
 
-                      /*g2o::VertexSE2* v = dynamic_cast<g2o::VertexSE2*>(edge_se3->vertices()[0]);
-              
-
-                      Eigen::Vector2d measv = edge_se3->measurement();
-                      
-                      std::cout << "measv: " << measv << std::endl;
-              
-                      Eigen::Matrix3d temp = Eigen::Matrix3d::Identity();
-                      temp.block<2,1>(0,2) = measv;
-                      Eigen::Matrix3d est_edg = (v->estimate().toIsometry().matrix())*temp;
-                      std::cout << "est_edg: " << est_edg << std::endl;
-                      std::cout << "corr_b: " << bntemp->node->estimate() << std::endl;
-                      Eigen::Vector2d p1 = est_edg.block<2,1>(0,2);
-                      Eigen::Vector2d p2 = bntemp->node->estimate();
-                      double dx = p1(0) - p2(0);
-                      double dy = p1(1) - p2(1);
-                      std::cout << "dist: " << sqrt((dx*dx)+(dy*dy)) << std::endl;*/
-                      /*edge_se3->setLevel(1);
-                    }
-                    
-                  }
-                }*/
-               
+                  inf.topLeftCorner(2, 2).array() /= w_x;
+                  inf(2, 2) /= w_q;
+                }
+                std::cout << "inf: " << inf << std::endl;*/
+                /*****************************************************************************/
                 
 
                 // buildings tf
-                geometry_msgs::TransformStamped ts3 = matrix2transform2d(keyframe->stamp,  (t_bs_b).cast<float>(), "map", "b_"+std::to_string(bntemp->node->id()));
-                b_tf_broadcaster.sendTransform(ts3);
-
+                if(private_nh.param<bool>("print_b_tf", false)) {
+                  geometry_msgs::TransformStamped ts3 = matrix2transform2d(keyframe->stamp,  (t_bs_b).cast<float>(), "map", "b_"+std::to_string(bntemp->node->id()));
+                  b_tf_broadcaster.sendTransform(ts3);
+                }
 
                 // buildings tf
                 //geometry_msgs::TransformStamped ts2 = matrix2transform2d(keyframe->stamp,  (t_bs_b*prova).cast<float>(), "map", "b_spost_"+bntemp->building.id);
                 //b_tf_broadcaster.sendTransform(ts2);
 
-                //Eigen::Matrix3d est = keyframe->node->estimate().toIsometry().matrix();
-                //Eigen::Matrix3d offset = t_bs_b*t_s_bs;
-                //offset.block<2,1>(0, 2) = (offset.block<2,1>(0, 2))*(-1);
-                //geometry_msgs::TransformStamped ts4 = matrix2transform2d(keyframe->stamp,  (((est).inverse())*(offset)).cast<float>(), "base_link", "pr_"+bntemp->building.id);
-                //b_tf_broadcaster.sendTransform(ts4);
+               
 
                 // edge tf (from keyframe to building)
                 //geometry_msgs::TransformStamped ts3 = matrix2transform2d(keyframe->stamp,  t_s_b.inverse().cast<float>(), "kf_"+std::to_string(keyframe->index), "tsb_"+ std::to_string(keyframe->index) + "_" + bntemp->building.id);
-                geometry_msgs::TransformStamped ts4 = matrix2transform2d(keyframe->stamp,  t_s_b.inverse().cast<float>(), "kf_"+std::to_string(keyframe->id()), "tsb"+std::to_string(keyframe->id())+"_" + std::to_string(bntemp->node->id()));
                 
-                
+                if(private_nh.param<bool>("print_tf", false)) {
+                  geometry_msgs::TransformStamped ts4 = matrix2transform2d(keyframe->stamp,  t_s_b.inverse().cast<float>(), "kf_"+std::to_string(keyframe->id()), "tsb"+std::to_string(keyframe->id())+"_" + std::to_string(bntemp->node->id()));
 
-                b_tf_broadcaster.sendTransform(ts4);
+                  b_tf_broadcaster.sendTransform(ts4);
+                }
+                
                 
                 //auto edge1 = graph_slam->add_se3_edge_prior(keyframe->node, t_s_b_iso, information_matrix);
                 //graph_slam->add_robust_kernel(edge1, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
-                /*std::cout << "temp1: " << temp1 << std::endl;
-                std::cout << "est: " << (keyframe->node->estimate().toIsometry().matrix()) << std::endl;
-                std::cout << "odom2map*odom: " << ((odom2map*keyframe->odom).matrix()) << std::endl; 
-                */
+                
                 
 
-                Eigen::Matrix3d fin = t_bs_b*prova;
-                //Eigen::Matrix3d fin2 = fin.inverse()*(keyframe->node->estimate().toIsometry().matrix());
-                Eigen::Matrix3d fin2 = fin.inverse()*(temp1);
-                //geometry_msgs::TransformStamped ts3 = matrix2transform2d(keyframe->stamp,  fin2.inverse().cast<float>(), "base_link", "s_b_"+bntemp->building.id);
-                //b_tf_broadcaster.sendTransform(ts3);
-                
-                //auto edge = graph_slam->add_se2_pointxy_edge(keyframe->node, bntemp->node, fin2.inverse().block<2,1>(0,2), information_matrix);
-                auto edge = graph_slam->add_se2_pointxy_edge(keyframe->node, bntemp->node, t_s_b_iso.translation(), information_matrix);
+                auto edge = graph_slam->add_se2_edge(keyframe->node, bntemp->node, t_s_b_iso, information_matrix);
         
                 graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
               }
+              sensor_msgs::PointCloud2Ptr temp_cloud_msg(new sensor_msgs::PointCloud2());
+              pcl::toROSMsg(*pcl_temp, *temp_cloud_msg);
+              temp_cloud_msg->header.frame_id = "map";
+              temp_cloud_msg->header.stamp = keyframe->stamp;
+              temp_pub.publish(temp_cloud_msg);
             }
-            if(idx == (private_nh.param<int>("edges_to_use", 1)+1))
-                  idx = 1;
-                else
-                  idx++;
+           
             keyframe->buildings_nodes = bnodes;
           } else {
 
@@ -1395,7 +1219,7 @@ private:
       anchor_node->setEstimate(anchor_target);
     }
     //std::cout << "before opt" << std::endl;
-    std::cout << "dim: " << static_cast<int>(graph_slam->graph->edges().size()) << std::endl;
+   
     // optimize the pose graph
     int num_iterations = private_nh.param<int>("g2o_solver_num_iterations", 1024);
     graph_slam->optimize(num_iterations);
@@ -1431,13 +1255,21 @@ private:
     for(auto it3 = buildings.begin(); it3 != buildings.end(); it3++)
     {
       BuildingNode::Ptr btemp = *it3;
-      Eigen::Isometry3d est = isometry2dto3d(getIsoFromTrans(btemp->node->estimate()));
+      Eigen::Isometry3d est = isometry2dto3d(btemp->node->estimate().toIsometry());
       pcl::PointCloud<PointT3>::Ptr temp_cloud_7(new pcl::PointCloud<PointT3>);
       pcl::transformPointCloud(*(btemp->referenceSystem), *temp_cloud_7, est.matrix());
       *estimatedBuildingsCloud += *temp_cloud_7;
 
       *buildingsCloud += *btemp->building.geometry;
+
+      //geometry_msgs::TransformStamped ts = matrix2transform2d(keyframe->stamp, (btemp->node->estimate().toIsometry().matrix()).cast<float>(), "map", "b_"+std::to_string(btemp->node->id()));
+      //b_tf_broadcaster.sendTransform(ts);
     }
+
+    /*for(auto& keyframe_x : keyframes) {
+      geometry_msgs::TransformStamped ts = matrix2transform2d(keyframe_x->stamp, (keyframe_x->node->estimate().toIsometry().matrix()).cast<float>(), "map", "kf_"+std::to_string(keyframe_x->id()));
+      b_tf_broadcaster.sendTransform(ts);
+    }*/
 
     sensor_msgs::PointCloud2Ptr eb_cloud_msg(new sensor_msgs::PointCloud2());
     pcl::toROSMsg(*estimatedBuildingsCloud, *eb_cloud_msg);
@@ -1452,6 +1284,10 @@ private:
     all_buildings_pub.publish(all_b_cloud_msg);
     /*****************************************************************************/
 
+    /*std::cout << "keyframes size: " << keyframes.size() << std::endl;
+    std::cout << "idx: " << ii << std::endl;
+    std::cout << "keyframes back index: " << keyframes.back()->index << std::endl;
+    std::cout << "gt size: " << gt.size() << std::endl;*/
     /********************************************************************************************/
     // errors computation
     // RPE always computed
@@ -1540,6 +1376,7 @@ private:
         index = 0;
 
       Eigen::Matrix4d estimate = isometry2dto3d(keyframes[index]->node->estimate().toIsometry()).matrix();
+
       //std::cout << "estimate: " << estimate.matrix() << std::endl;
       //std::cout << "base camera: " << base_camera.matrix() << std::endl;
       Eigen::Matrix4d tr = estimate*base_camera;
@@ -1553,6 +1390,46 @@ private:
       Eigen::Matrix4d delta_2 = Eigen::Matrix4d::Identity();
       delta_2 = gt[index] * (tr.inverse());
       //std::cout << "delta_2: " << delta_2 << std::endl;
+
+      /****************************/
+      /*if(keyframes.size() > 1) {
+        
+        Eigen::Rotation2D<double> rot_est(keyframes[index]->node->estimate().rotation()); 
+
+        Eigen::Vector2d trans_1_est = keyframes.back()->node->estimate().translation(); 
+        Eigen::Vector2d trans_0_est = keyframes[keyframes.size()-2]->node->estimate().translation();
+        double dx_est = trans_1_est(0) - trans_0_est(0);
+        double dy_est = trans_1_est(1) - trans_0_est(1);
+        double angle_est = atan2(dy_est, dx_est);
+        std::cout << "angle_est: " << angle_est << std::endl;
+
+        Eigen::Matrix4d temp_1 = delta * gt[keyframes.back()->index];
+        Eigen::Matrix4d temp_0 = delta * gt[keyframes[keyframes.size()-2]->index];
+        Eigen::Vector2d trans_1_gt = temp_1.block<2,1>(0,3);
+        Eigen::Vector2d trans_0_gt = temp_0.block<2,1>(0,3);
+        double dx_gt = trans_1_gt(0) - trans_0_gt(0);
+        double dy_gt = trans_1_gt(1) - trans_0_gt(1);
+        double angle_gt = atan2(dy_gt, dx_gt);
+        std::cout << "angle_gt: " << angle_gt << std::endl;
+
+        double diff = angle_gt - angle_est;
+        std::cout << "diff: " << diff << std::endl;
+        double angle = rot_est.angle() - diff;
+        std::cout << "angle: " << angle << std::endl;
+        Eigen::Rotation2D<double> rot_fin(angle);
+
+        estimate.block<2,2>(0,0) = rot_fin.toRotationMatrix();
+
+        tr = Eigen::Matrix4d::Identity();
+        tr = estimate*base_camera;
+
+        delta = Eigen::Matrix4d::Identity();
+        delta = tr * (gt[index].inverse());
+        
+        delta_2 = Eigen::Matrix4d::Identity();
+        delta_2 = gt[index] * (tr.inverse());
+      }*/
+      /****************************/
       
       std::ofstream myfile5;
       myfile5.open("align.txt");
@@ -1751,9 +1628,9 @@ private:
      for(int i = 0; i < buildings.size(); i++) {
        if(buildings[i]->node != nullptr) {
         
-        Eigen::Vector2d pos = buildings[i]->node->estimate();
-        traj_marker.points[i+keyframes.size()].x = pos.x();
-        traj_marker.points[i+keyframes.size()].y = pos.y();
+        Eigen::Isometry2d pos = buildings[i]->node->estimate().toIsometry();
+        traj_marker.points[i+keyframes.size()].x = pos.translation().x();
+        traj_marker.points[i+keyframes.size()].y = pos.translation().y();
         traj_marker.points[i+keyframes.size()].z = 0;
 
         traj_marker.colors[i+keyframes.size()].r = 255.0/255.0;
