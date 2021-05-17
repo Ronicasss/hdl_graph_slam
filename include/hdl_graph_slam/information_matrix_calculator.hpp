@@ -47,6 +47,19 @@ private:
     std::cout << "max_y: " << max_y << std::endl;*/
     std::cout << "x: " << x << std::endl;
     double y = (1.0 - std::exp(-a * x)) / (1.0 - std::exp(-a * max_x));
+    std::cout << "y: " << y << std::endl;
+    return min_y + (max_y - min_y) * y;
+  }
+
+  double weight_buildings(double a, double max_x, double min_y, double max_y, double x) const {
+    /*std::cout << "a: " << a << std::endl;
+    std::cout << "max_x: " << max_x << std::endl;
+    std::cout << "min_y: " << min_y << std::endl;
+    std::cout << "max_y: " << max_y << std::endl;*/
+    std::cout << "x: " << x << std::endl;
+    //double y = (1.0 - std::exp(-a * x)) / (1.0 - std::exp(-a * max_x));
+    //double y = x/max_x;
+    double y = x*max_x;
     //y = 1 - y;
     std::cout << "y: " << y << std::endl;
     return min_y + (max_y - min_y) * y;

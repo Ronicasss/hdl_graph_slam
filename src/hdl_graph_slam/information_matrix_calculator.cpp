@@ -36,7 +36,7 @@ Eigen::MatrixXd InformationMatrixCalculator::calc_information_matrix(const pcl::
     inf.bottomRightCorner(3, 3).array() /= const_stddev_q;
     return inf;
   }
-
+  
   double fitness_score = calc_fitness_score(cloud1, cloud2, relpose);
 
   std::cout << "kf_fitness_score: " << fitness_score << std::endl;
@@ -99,14 +99,14 @@ Eigen::MatrixXd InformationMatrixCalculator::calc_information_matrix_buildings(c
   
   double b_fitness_score = calc_fitness_score_buildings(cloud1, cloud2, relpose, 5.0);
   std::cout << "b_fitness_score: " << b_fitness_score << std::endl;
-
+ 
   double b_min_var_x = std::pow(b_min_stddev_x, 2);
   double b_max_var_x = std::pow(b_max_stddev_x, 2);
   double b_min_var_q = std::pow(b_min_stddev_q, 2);
   double b_max_var_q = std::pow(b_max_stddev_q, 2);
 
-  float w_x = weight(b_var_gain_a, b_fitness_score_thresh, b_min_var_x, b_max_var_x, b_fitness_score);
-  float w_q = weight(b_var_gain_a, b_fitness_score_thresh, b_min_var_q, b_max_var_q, b_fitness_score);
+  float w_x = weight_buildings(b_var_gain_a, b_fitness_score_thresh, b_min_var_x, b_max_var_x, b_fitness_score);
+  float w_q = weight_buildings(b_var_gain_a, b_fitness_score_thresh, b_min_var_q, b_max_var_q, b_fitness_score);
 
   std::cout << "w_x: " << w_x << std::endl;
   std::cout << "w_q: " << w_q << std::endl;

@@ -106,7 +106,7 @@
     <param name="padding" value="1.5" />
     <param name="initial_padding" value="1.5" />
     <param name="enable_padding" value="false" />
-    <param name="print_tf" value="true" />
+    <param name="print_tf" value="false" />
     <param name="print_b_tf" value="false" />
     <param name="cut" value="5.0" />
 
@@ -215,7 +215,7 @@
     <param name="use_const_inf_matrix" value="false" />
     <param name="const_stddev_x" value="0.5" />
     <param name="const_stddev_q" value="0.1" />
-    <param name="var_gain_a" value="5.0" />
+    <param name="var_gain_a" value="20.0" />
     <param name="min_stddev_x" value="0.1" />
     <param name="max_stddev_x" value="5.0" />
     <param name="min_stddev_q" value="0.05" />
@@ -226,11 +226,11 @@
     <param name="building_edge_stddev_xy" value="1.0" />
     <param name="building_edge_stddev_z" value="0.0" />
     <param name="building_edge_stddev_q" value="0.0" />
-    <param name="b_var_gain_a" value="1.0" />
+    <param name="b_var_gain_a" value="5.0" />
     <param name="b_min_stddev_x" value="0.1" />
-    <param name="b_max_stddev_x" value="50.0" />
-    <param name="b_min_stddev_q" value="0.1" />
-    <param name="b_max_stddev_q" value="5.0" />
+    <param name="b_max_stddev_x" value="15.0" />
+    <param name="b_min_stddev_q" value="0.01" />
+    <param name="b_max_stddev_q" value="1.0" />
     <param name="b_fitness_score_thresh" value="2.5" />
     <param name="b_use_const_inf_matrix" value="false" />
 

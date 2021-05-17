@@ -145,7 +145,7 @@ public:
     reset_counter = 0;
     dist_last_kf = 0.0;
     idx = 1;
-
+ 
     //
     anchor_node = nullptr;
     anchor_edge = nullptr;
@@ -673,7 +673,14 @@ private:
                 A.translation() = T;
                 // set the node
                 bt->node = graph_slam->add_se2_node(A); 
+
+                //Eigen::Matrix3d information_matrix2 = Eigen::Matrix3d::Identity();
+                //auto edge2 = graph_slam->add_se2_edge_prior(bt->node, A, information_matrix2);
                 
+                //graph_slam->add_robust_kernel(edge2, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
+                
+                
+
                 if(fix_first_building) {
                   if(private_nh.param<bool>("fix_first_building", true)) {
                     //std::cout << "fixed building!" << std::endl;
@@ -945,6 +952,7 @@ private:
                 geometry_msgs::TransformStamped ts = matrix2transform2d(keyframe->stamp, (keyframe->node->estimate().toIsometry().matrix()).cast<float>(), "map", "kf_"+std::to_string(keyframe->id()));
                 b_tf_broadcaster.sendTransform(ts);
               }
+
 
               // t_s_bs in kf frame
               //geometry_msgs::TransformStamped ts4 = matrix2transform2d(keyframe->stamp, (prova).cast<float>(), "kf_"+std::to_string(keyframe->index), "t_s_bs"+std::to_string(keyframe->index));
@@ -1738,12 +1746,12 @@ private:
         edge_marker.points[i * 2 + 1].z = 0;
 
         edge_marker.colors[i * 2].r = 255.0/255.0;
-        edge_marker.colors[i * 2].g = 20.0/255.0;
-        edge_marker.colors[i * 2].b = 147.0/255.0;
+        edge_marker.colors[i * 2].g = 255.0/255.0;
+        edge_marker.colors[i * 2].b = 0.0/255.0;
         edge_marker.colors[i * 2].a = 1.0;
         edge_marker.colors[i * 2 + 1].r = 255.0/255.0;
-        edge_marker.colors[i * 2 + 1].g = 20.0/255.0;
-        edge_marker.colors[i * 2 + 1].b = 147.0/255.0;
+        edge_marker.colors[i * 2 + 1].g = 255.0/255.0;
+        edge_marker.colors[i * 2 + 1].b = 0.0/255.0;
         edge_marker.colors[i * 2 + 1].a = 1.0;
 
         continue;
