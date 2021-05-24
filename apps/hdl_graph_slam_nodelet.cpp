@@ -145,7 +145,8 @@ public:
     reset_counter = 0;
     dist_last_kf = 0.0;
     idx = 1;
- 
+    pcl::console::setVerbosityLevel(pcl::console::L_DEBUG);
+  
     //
     anchor_node = nullptr;
     anchor_edge = nullptr;
@@ -594,6 +595,23 @@ private:
           /***************************************************************************************/
           // compute dynamic lidar range (used to download buildings)
           if(private_nh.param<bool>("dynamic_lidar_range", false)) {
+            /*std::cout << "set dynamic lidar range" << std::endl; 
+            Eigen::Vector2d est = keyframe->node->estimate().translation();
+            pcl::PointXYZ p_est;
+            p_est.x = est(0);
+            p_est.y = est(1);
+            p_est.z = 0;
+            double sum = 0.0;
+            for(int i = 0; i < odomCloud->size(); i++) {
+              pcl::PointXYZ ptemp = odomCloud->at(i);
+              double dist = pcl::euclideanDistance(p_est, ptemp);
+              sum += dist;
+            }
+
+            double dist = (sum/(odomCloud->size()));
+            
+            lidar_range = dist + private_nh.param<double>("lidar_range_add_factor", 3.0);*/
+
             std::cout << "set dynamic lidar range" << std::endl; 
             Eigen::Vector4f c;
             pcl::compute3DCentroid(*odomCloud, c);
@@ -612,6 +630,21 @@ private:
             
             lidar_range = dist + private_nh.param<double>("lidar_range_add_factor", 3.0);
           }
+
+          /*pcl::PointXYZ p_max;
+          Eigen::Vector2d est = keyframe->node->estimate().translation();
+          pcl::PointXYZ p_est;
+          p_est.x = est(0);
+          p_est.y = est(1);
+          p_est.z = 0;
+          double d = 0.0;
+          for(int i = 0; i < odomCloud->size(); i++) {
+            pcl::PointXYZ p_temp = odomCloud->at(i);
+            double d_temp = pcl::euclideanDistance(p_est, p_temp);
+            if(d_temp > d)
+              d = d_temp;
+          }
+          lidar_range = d - private_nh.param<double>("lidar_range_add_factor", 3.0);*/
            
           std::cout << "lidar range: " << lidar_range << std::endl;  
           /***************************************************************************************/  
@@ -759,7 +792,7 @@ private:
             }
             std::cout << "guess: " << guess << std::endl;
 
-            if((keyframe->accum_distance - dist_last_kf) > 200 && reset_gicp == true && !first_guess)
+            if((keyframe->accum_distance - dist_last_kf) > 200 && reset_gicp && !first_guess)
               reset_counter = 1;
             reset_gicp = false;
             dist_last_kf = keyframe->accum_distance;
@@ -770,7 +803,7 @@ private:
             pcl::registration::WarpPointRigid3D<PointT3, PointT3>::Ptr warp_fcn(new pcl::registration::WarpPointRigid3D<PointT3,PointT3>);
             pcl::registration::TransformationEstimationLM<PointT3, PointT3>::Ptr te(new pcl::registration::TransformationEstimationLM<PointT3, PointT3>);
             te->setWarpFunction(warp_fcn);
-
+ 
             /*std::cout << "registration: FAST_VGICP" << std::endl;
             boost::shared_ptr<fast_gicp::FastVGICP<PointT3, PointT3>> gicp(new fast_gicp::FastVGICP<PointT3, PointT3>());
             gicp->setNumThreads(private_nh.param<int>("gicp_reg_num_threads", 0));
@@ -780,7 +813,7 @@ private:
               gicp->setResolution(private_nh.param<double>("gicp_initial_reg_resolution", 2.0));
             */
 
-            double ndt_resolution = private_nh.param<double>("b_reg_resolution", 0.5);
+            /*double ndt_resolution = private_nh.param<double>("b_reg_resolution", 0.5);
             int num_threads = private_nh.param<int>("b_reg_num_threads", 0);
             std::string nn_search_method = private_nh.param<std::string>("b_reg_nn_search_method", "DIRECT7");
             std::cout << "registration: NDT_OMP " << nn_search_method << " " << ndt_resolution << " (" << num_threads << " threads)" << std::endl;
@@ -798,20 +831,20 @@ private:
               gicp->setNeighborhoodSearchMethod(pclomp::DIRECT1);
             } else {
               gicp->setNeighborhoodSearchMethod(pclomp::DIRECT7);
-            }
-            
+            }*/
+             
             //std::cout << "registration: FAST_GICP" << std::endl;
             //boost::shared_ptr<fast_gicp::FastGICP<PointT3, PointT3>> gicp(new fast_gicp::FastGICP<PointT3, PointT3>());
             //gicp->setNumThreads(private_nh.param<int>("reg_num_threads", 0));
 
-            /*std::cout << "registration: GICP_OMP" << std::endl;
+            std::cout << "registration: GICP_OMP" << std::endl;
             boost::shared_ptr<GeneralizedIterativeClosestPoint_Exposed<PointT3, PointT3>> gicp(new GeneralizedIterativeClosestPoint_Exposed<PointT3, PointT3>());
 
-            if(private_nh.param<bool>("enable_transformation_epsilon", true))
+            if(private_nh.param<bool>("enable_gicp_transformation_epsilon", true))
               gicp->setTransformationEpsilon(private_nh.param<double>("gicp_transformation_epsilon", 0.01));
-            if(private_nh.param<bool>("enable_maximum_iterations", true))
+            if(private_nh.param<bool>("enable_gicp_maximum_iterations", true))
               gicp->setMaximumIterations(private_nh.param<int>("gicp_maximum_iterations", 64));
-            if(private_nh.param<bool>("enable_use_reciprocal_correspondences", true))
+            if(private_nh.param<bool>("enable_gicp_use_reciprocal_correspondences", true))
               gicp->setUseReciprocalCorrespondences(private_nh.param<bool>("gicp_use_reciprocal_correspondences", false));
             if(private_nh.param<bool>("enable_gicp_correspondence_randomness", true))
               gicp->setCorrespondenceRandomness(private_nh.param<int>("gicp_correspondence_randomness", 20));
@@ -819,13 +852,13 @@ private:
               gicp->setMaximumOptimizerIterations(private_nh.param<int>("gicp_max_optimizer_iterations", 20));
 
             if(private_nh.param<bool>("enable_gicp_max_correspondance_distance", false))
-              //gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance", 0.05));
+              gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance", 0.05));
             if(private_nh.param<bool>("enable_gicp_euclidean_fitness_epsilon", false))
               gicp->setEuclideanFitnessEpsilon(private_nh.param<double>("gicp_euclidean_fitness_epsilon", 1));
             if(private_nh.param<bool>("enable_gicp_ransac_outlier_threshold", false)) 
               gicp->setRANSACOutlierRejectionThreshold(private_nh.param<double>("gicp_ransac_outlier_threshold", 1.5));
 
-            if(reset_counter == 1) {
+            /*if(reset_counter == 1) {
               gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance", 15.0));
               std::cout << "setting to " << private_nh.param<double>("gicp_max_correspondance_distance", 15.0) << std::endl;
             } else if(reset_counter == 2) {
@@ -837,16 +870,22 @@ private:
             } else {
               gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance_min", 1.0));
               std::cout << "setting to " << private_nh.param<double>("gicp_max_correspondance_distance_min", 1.0) << std::endl;
-            }
+            }*/
 
-
-            //gicp->setMaxCorrespondenceDistance(private_nh.param<double>("gicp_max_correspondance_distance", 1.0));
-            //std::cout << "ransac: " << gicp->getRANSACOutlierRejectionThreshold() << std::endl;
-            //std::cout << "fitness: " << gicp->getEuclideanFitnessEpsilon() << std::endl;
+            std::cout << "trans eps: " << gicp->getTransformationEpsilon() << std::endl;
+            std::cout << "rot eps: " << gicp->getRotationEpsilon() << std::endl;
+            std::cout << "max it: " << gicp->getMaximumIterations() << std::endl;
+            std::cout << "reciprocal: " << gicp->getUseReciprocalCorrespondences() << std::endl;
+            std::cout << "randomness: " << gicp->getCorrespondenceRandomness() << std::endl;
+            std::cout << "opt max it: " << gicp->getMaximumOptimizerIterations() << std::endl;
+            
+            std::cout << "max dist: " << gicp->getMaxCorrespondenceDistance() << std::endl;
+            std::cout << "euclidean fitness: " << gicp->getEuclideanFitnessEpsilon() << std::endl;
+            std::cout << "ransac: " << gicp->getRANSACOutlierRejectionThreshold() << std::endl;
 
             
-            gicp->setTransformationEstimation(te);*/
-            std::cout << "max dist: " << gicp->getMaxCorrespondenceDistance() << std::endl;
+            gicp->setTransformationEstimation(te);
+            
             
             gicp->setInputTarget(buildingsCloud);
             gicp->setInputSource(odomCloud);
@@ -887,7 +926,7 @@ private:
             Eigen::Isometry2d t_s_bs_iso = Eigen::Isometry2d::Identity();
             t_s_bs_iso.matrix() = t_s_bs;
 
-            double ft = InformationMatrixCalculator::calc_fitness_score_buildings(buildingsCloud, odomCloud, isometry2dto3d(t_s_bs_iso), 1.0);
+            /*double ft = InformationMatrixCalculator::calc_fitness_score_buildings(buildingsCloud, odomCloud, isometry2dto3d(t_s_bs_iso), 1.0);
             if(ft > 0.3) {
               if(reset_counter == 1) {
                 reset_counter = 1;
@@ -895,10 +934,16 @@ private:
               }
               else if(ft > 0.35) {
                 reset_counter = 3;
-              } else {
+              } else { 
                 reset_counter = 2;
                 //std::cout << "fitness score too high 0.3 = 2" << std::endl;
               }
+            // it was here
+            } else {
+              reset_counter = 0;
+              //std::cout << "fitness score low = 0" << std::endl;
+            }*/
+
             /*} else if(ft > 0.25) {
               if(reset_counter == 1) {
                 reset_counter = 1;
@@ -907,10 +952,6 @@ private:
                 reset_counter = 2;
                 std::cout << "fitness score too high 0.25 = 2" << std::endl;
               }*/
-            } else {
-              reset_counter = 0;
-              //std::cout << "fitness score low = 0" << std::endl;
-            }
 
 
             Eigen::Isometry2d temp = t_s_bs_iso*(keyframe->odom);
@@ -949,8 +990,13 @@ private:
 
               // t_s_bs in map frame
               if(private_nh.param<bool>("print_tf", false)) {
-                geometry_msgs::TransformStamped ts = matrix2transform2d(keyframe->stamp, (keyframe->node->estimate().toIsometry().matrix()).cast<float>(), "map", "kf_"+std::to_string(keyframe->id()));
-                b_tf_broadcaster.sendTransform(ts);
+                if(keyframe->id() > -1) {
+                  geometry_msgs::TransformStamped ts = matrix2transform2d(keyframe->stamp, (keyframe->node->estimate().toIsometry().matrix()).cast<float>(), "map", "kf_"+std::to_string(keyframe->id()));
+                  b_tf_broadcaster.sendTransform(ts);
+                } else {
+                  geometry_msgs::TransformStamped ts = matrix2transform2d(keyframe->stamp, (t_s_bs*keyframe->odom.matrix()).cast<float>(), "map", "kf_"+std::to_string(keyframe->id()));
+                  b_tf_broadcaster.sendTransform(ts);
+                }
               }
 
 
@@ -960,13 +1006,14 @@ private:
 
               pcl::PointCloud<PointT3>::Ptr pcl_temp(new pcl::PointCloud<PointT3>());
               boost::shared_ptr<std::vector<int>> src_corr(new std::vector<int>()), tgt_corr(new std::vector<int>());
-  
-                InformationMatrixCalculator::calc_fitness_score_buildings(src_corr, tgt_corr, buildingsCloud, odomCloud, isometry2dto3d(t_s_bs_iso), private_nh.param<double>("cut", 1.0));
+              double cut_dist = gicp->getMaxCorrespondenceDistance() * gicp->getMaxCorrespondenceDistance();
+              //std::cout << "cut dist: " << cut_dist << std::endl;
+              InformationMatrixCalculator::calc_fitness_score_buildings(src_corr, tgt_corr, buildingsCloud, odomCloud, isometry2dto3d(t_s_bs_iso), cut_dist);
                 /*std::cout << "src_corr_size: " << src_corr->size() << std::endl;
                 std::cout << "tgt_corr_size: " << tgt_corr->size() << std::endl;
                 std::cout << "buildings_size: " << buildingsCloud->size() << std::endl;
                 std::cout << "odom_size: " << odomCloud->size() << std::endl;*/
-
+ 
               // add edges
               for(auto it1 = bnodes.begin(); it1 != bnodes.end(); it1++)
               {
@@ -985,8 +1032,7 @@ private:
                 
                 /*****************************************************************************/
                 
-                
-                /*Eigen::Isometry3d est = isometry2dto3d(bntemp->node->estimate().toIsometry());
+                Eigen::Isometry3d est = isometry2dto3d(bntemp->node->estimate().toIsometry());
                 pcl::PointCloud<PointT3>::Ptr b_pcl(new pcl::PointCloud<PointT3>);
                 pcl::transformPointCloud(*(bntemp->referenceSystem), *b_pcl, est.matrix());
                 
@@ -1004,11 +1050,14 @@ private:
                   if(j != b_pcl->size()) {
                     
                     pcl_temp->push_back(aligned->at(src_corr->at(i)));
+                    pcl_temp->push_back(pt);
+
+
                     double dx = (aligned->at(src_corr->at(i))).x - pt.x;
                    
                     double dy = (aligned->at(src_corr->at(i))).y - pt.y;
                     
-                    double dist = sqrt(dx*dx + dy*dy);
+                    double dist = dx*dx + dy*dy;
                    
 
                    mean_dist += dist;
@@ -1023,7 +1072,7 @@ private:
                 }
                 std::cout << "b_id: " << bntemp->node->id() << std::endl;
                 std::cout << "k: " << k << std::endl;
-                std::cout << "ft: " << temp_ft << std::endl; 
+                //std::cout << "ft: " << temp_ft << std::endl;
 
                 Eigen::MatrixXd inf = Eigen::MatrixXd::Identity(3, 3);
                 if(k > 0) {
@@ -1042,21 +1091,22 @@ private:
 
                   double max_x = private_nh.param<double>("b_fitness_score_thresh", 0.5);
                   //std::cout << "max_x: " << max_x << std::endl;
+  
+                  //double y = (1.0 - std::exp(-a * x)) / (1.0 - std::exp(-a * max_x));
+                  double y = x*max_x;
 
-                  double y = (1.0 - std::exp(-a * x)) / (1.0 - std::exp(-a * max_x));
-                  y = 1-y;
-                  std::cout << "y: " << y << std::endl;
+                  //std::cout << "y: " << y << std::endl;
                   double w_x = min_y + (max_y - min_y) * y;
                   double w_q = min_y_q + (max_y_q - min_y_q) * y;
 
-                  std::cout << "w_x: " << w_x << std::endl;
-                  std::cout << "w_q: " << w_q << std::endl;
+                  //std::cout << "w_x: " << w_x << std::endl;
+                  //std::cout << "w_q: " << w_q << std::endl;
 
 
                   inf.topLeftCorner(2, 2).array() /= w_x;
                   inf(2, 2) /= w_q;
                 }
-                std::cout << "inf: " << inf << std::endl;*/
+                //std::cout << "inf: " << inf << std::endl;
                 /*****************************************************************************/
                 
 
@@ -1065,7 +1115,7 @@ private:
                   geometry_msgs::TransformStamped ts3 = matrix2transform2d(keyframe->stamp,  (t_bs_b).cast<float>(), "map", "b_"+std::to_string(bntemp->node->id()));
                   b_tf_broadcaster.sendTransform(ts3);
                 }
-
+    
                 // buildings tf
                 //geometry_msgs::TransformStamped ts2 = matrix2transform2d(keyframe->stamp,  (t_bs_b*prova).cast<float>(), "map", "b_spost_"+bntemp->building.id);
                 //b_tf_broadcaster.sendTransform(ts2);
@@ -1086,10 +1136,13 @@ private:
                 //graph_slam->add_robust_kernel(edge1, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
                 
                 
-
-                auto edge = graph_slam->add_se2_edge(keyframe->node, bntemp->node, t_s_b_iso, information_matrix);
+                if(k > private_nh.param<int>("k_thresh", 0)) {
+                  auto edge = graph_slam->add_se2_edge(keyframe->node, bntemp->node, t_s_b_iso, inf);
         
-                graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
+                  graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
+                } else {
+                  std::cout << "no edge" << std::endl;
+                }
               }
               sensor_msgs::PointCloud2Ptr temp_cloud_msg(new sensor_msgs::PointCloud2());
               pcl::toROSMsg(*pcl_temp, *temp_cloud_msg);

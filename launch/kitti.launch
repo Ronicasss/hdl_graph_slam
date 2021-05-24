@@ -107,8 +107,9 @@
     <param name="initial_padding" value="1.5" />
     <param name="enable_padding" value="false" />
     <param name="print_tf" value="false" />
-    <param name="print_b_tf" value="false" />
-    <param name="cut" value="5.0" />
+    <param name="print_b_tf" value="true" />
+    <param name="cut" value="6.0" />
+    <param name="k_thresh" value="100" />
 
     <param name="ground_floor_max_thresh" value="1" />
     <param name="radius_search" value="0.3" />
@@ -117,28 +118,31 @@
 
     <param name="gicp_transformation_epsilon" value="0.01" />
     <param name="gicp_maximum_iterations" value="64" />
-    <param name="gicp_use_reciprocal_correspondences" value="true" />
+    <param name="gicp_use_reciprocal_correspondences" value="false" />
     <param name="gicp_correspondence_randomness" value="20" />
     <param name="gicp_max_optimizer_iterations" value="20" />
 
     <param name="gicp_max_correspondance_distance" value="2.5" />
-    <param name="gicp_max_correspondance_distance_mid_2" value="2.5" />
+
+    <!--<param name="gicp_max_correspondance_distance_mid_2" value="2.5" />
     <param name="gicp_max_correspondance_distance_mid" value="2.5" />
-    <param name="gicp_max_correspondance_distance_min" value="2.5" />
+    <param name="gicp_max_correspondance_distance_min" value="2.5" />-->
+
     <param name="gicp_euclidean_fitness_epsilon" value="1e-12" />
     <param name="gicp_ransac_outlier_threshold" value="1.0" />
-    <param name="gicp_reg_resolution" value="1.0" />
+
+    <!--<param name="gicp_reg_resolution" value="1.0" />
     <param name="gicp_reg_num_threads" value="0" />
 
     <param name="gicp_initial_reg_resolution" value="1.0" />
     <param name="gicp_init_res_kf_thresh" value="0" />
-    <param name="guess_thresh" value="0.25" />
+    <param name="guess_thresh" value="0.25" />-->
 
-    <param name="enable_transformation_epsilon" value="true" />
-    <param name="enable_maximum_iterations" value="true" />
-    <param name="enable_use_reciprocal_correspondences" value="true" />
-    <param name="enable_gicp_correspondence_randomness" value="true" />
-    <param name="enable_gicp_max_optimizer_iterations" value="true" />
+    <param name="enable_gicp_transformation_epsilon" value="false" />
+    <param name="enable_gicp_maximum_iterations" value="false" />
+    <param name="enable_gicp_use_reciprocal_correspondences" value="false" />
+    <param name="enable_gicp_correspondence_randomness" value="false" />
+    <param name="enable_gicp_max_optimizer_iterations" value="false" />
     <param name="enable_gicp_max_correspondance_distance" value="true" />
     <param name="enable_gicp_euclidean_fitness_epsilon" value="false" />
     <param name="enable_gicp_ransac_outlier_threshold" value="false" />
@@ -146,10 +150,10 @@
 
     <!-- ******************************************************************************** -->
     <param name="b_reg_num_threads" value="0" />
-    <param name="b_reg_transformation_epsilon" value="0.001"/>
+    <param name="b_reg_transformation_epsilon" value="0.1"/>
     <param name="b_reg_maximum_iterations" value="64"/>
     
-    <param name="b_reg_resolution" value="2.0" />
+    <param name="b_reg_resolution" value="3.5" />
     <param name="b_reg_nn_search_method" value="DIRECT7" />
     <!-- ******************************************************************************** -->
 
@@ -228,7 +232,7 @@
     <param name="building_edge_stddev_q" value="0.0" />
     <param name="b_var_gain_a" value="5.0" />
     <param name="b_min_stddev_x" value="0.1" />
-    <param name="b_max_stddev_x" value="15.0" />
+    <param name="b_max_stddev_x" value="10.0" />
     <param name="b_min_stddev_q" value="0.01" />
     <param name="b_max_stddev_q" value="1.0" />
     <param name="b_fitness_score_thresh" value="2.5" />

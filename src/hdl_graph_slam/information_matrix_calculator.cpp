@@ -122,7 +122,7 @@ double InformationMatrixCalculator::calc_fitness_score_buildings(boost::shared_p
   std::cout << "dentro fitness" << std::endl;
   pcl::search::KdTree<PointT3>::Ptr tree_(new pcl::search::KdTree<PointT3>());
   tree_->setInputCloud(cloud1);
-
+   
   double fitness_score = 0.0;
 
   // Transform the input dataset using the final transformation
