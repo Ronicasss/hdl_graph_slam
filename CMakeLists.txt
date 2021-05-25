@@ -24,6 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
   fast_gicp
   tf_conversions
   eigen_conversions
+  rviz_satellite
 )
 catkin_python_setup()
 

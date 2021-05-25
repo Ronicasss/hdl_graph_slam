@@ -131,7 +131,7 @@ double InformationMatrixCalculator::calc_fitness_score_buildings(boost::shared_p
 
   std::vector<int> nn_indices(1);
   std::vector<float> nn_dists(1);
-
+  
   // For each point in the source dataset
   int nr = 0;
   for(size_t i = 0; i < input_transformed.points.size(); ++i) {

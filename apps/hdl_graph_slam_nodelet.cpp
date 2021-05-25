@@ -127,6 +127,7 @@ public:
     original_odom_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/original_odom_cloud", 32);
     all_buildings_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/all_buildings", 32);
     temp_pub = mt_nh.advertise<sensor_msgs::PointCloud2>("/hdl_graph_slam/temp", 32);
+    zero_utm_pub = mt_nh.advertise<sensor_msgs::NavSatFix>("/hdl_graph_slam/zero_utm", 32);
 
     lidar_range = private_nh.param<float>("lidar_range", 20);
     ground_floor_max_thresh = private_nh.param<double>("ground_floor_max_thresh", 0.5);
@@ -396,6 +397,15 @@ private:
         zero_utm = xyz;
         zero_utm_zone = utm.zone;
         zero_utm_band = utm.band;
+
+        sensor_msgs::NavSatFix tmp;
+        tmp.header.frame_id = "map";
+        tmp.header.stamp = keyframe->stamp;
+        tmp.latitude = (*closest_gps)->position.latitude;
+        tmp.longitude = (*closest_gps)->position.longitude;
+        tmp.altitude = (*closest_gps)->position.altitude;
+
+        zero_utm_pub.publish(tmp);
       }
       xyz -= (*zero_utm);
 
@@ -1006,8 +1016,14 @@ private:
 
               pcl::PointCloud<PointT3>::Ptr pcl_temp(new pcl::PointCloud<PointT3>());
               boost::shared_ptr<std::vector<int>> src_corr(new std::vector<int>()), tgt_corr(new std::vector<int>());
-              double cut_dist = gicp->getMaxCorrespondenceDistance() * gicp->getMaxCorrespondenceDistance();
-              //std::cout << "cut dist: " << cut_dist << std::endl;
+              
+              double cut_dist = 0.0;
+              if(private_nh.param<double>("cut", -1) > 0) {
+                cut_dist = private_nh.param<double>("cut", -1);
+              } else {
+                cut_dist = gicp->getMaxCorrespondenceDistance() * gicp->getMaxCorrespondenceDistance();
+              }
+              std::cout << "cut dist: " << cut_dist << std::endl;
               InformationMatrixCalculator::calc_fitness_score_buildings(src_corr, tgt_corr, buildingsCloud, odomCloud, isometry2dto3d(t_s_bs_iso), cut_dist);
                 /*std::cout << "src_corr_size: " << src_corr->size() << std::endl;
                 std::cout << "tgt_corr_size: " << tgt_corr->size() << std::endl;
@@ -1069,9 +1085,9 @@ private:
                 double temp_ft = 0.0;
                 if(k > 0) {
                   temp_ft = (mean_dist/k);
-                }
-                std::cout << "b_id: " << bntemp->node->id() << std::endl;
-                std::cout << "k: " << k << std::endl;
+                } 
+                //std::cout << "b_id: " << bntemp->node->id() << std::endl;
+                //std::cout << "k: " << k << std::endl;
                 //std::cout << "ft: " << temp_ft << std::endl;
 
                 Eigen::MatrixXd inf = Eigen::MatrixXd::Identity(3, 3);
@@ -1141,7 +1157,7 @@ private:
         
                   graph_slam->add_robust_kernel(edge, private_nh.param<std::string>("map_edge_robust_kernel", "NONE"), private_nh.param<double>("map_edge_robust_kernel_size", 1.0));
                 } else {
-                  std::cout << "no edge" << std::endl;
+                  //std::cout << "no edge" << std::endl;
                 }
               }
               sensor_msgs::PointCloud2Ptr temp_cloud_msg(new sensor_msgs::PointCloud2());
@@ -1519,8 +1535,8 @@ private:
         gt_traj_marker.points.push_back(p);
         std_msgs::ColorRGBA c;
         c.r = 1.0;
-        c.g = 1.0;
-        c.b = 1.0;
+        c.g = 0.0;
+        c.b = 0.0;
         c.a = 1.0;
         gt_traj_marker.colors.push_back(c);
       }
@@ -2045,6 +2061,7 @@ private:
   ros::Publisher estimated_buildings_pub;
   ros::Publisher all_buildings_pub;
   ros::Publisher temp_pub;
+  ros::Publisher zero_utm_pub;
   double ground_floor_max_thresh;
   double radius_search;
   int min_neighbors_in_radius;
